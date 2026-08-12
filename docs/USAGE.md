@@ -4,7 +4,7 @@ Short companion to the [README](../README.md).
 
 ## First launch
 
-1. Enter your Supabase project URL and anon key (or use a build that already has them).
+1. Enter your Supabase project URL and publishable key (or use a build that already has them).
 2. Sign up with your name, email and password.
 3. Add at least one **account** (M-Pesa, bank, cash) and its **opening balance**.
 

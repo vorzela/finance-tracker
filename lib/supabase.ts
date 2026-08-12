@@ -4,8 +4,9 @@
  * Owns the single Supabase client.
  *
  * Credentials are resolved in two steps:
- *   1. `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_ANON_KEY`, baked into
- *      the bundle at build time — the normal path for a shared APK.
+ *   1. `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+ *      baked into the bundle at build time — the normal path for a shared APK.
+ *      (Legacy `EXPO_PUBLIC_SUPABASE_ANON_KEY` is still accepted.)
  *   2. Values typed into the in-app connect screen and kept in AsyncStorage —
  *      the escape hatch for a build that shipped without them.
  *
@@ -22,6 +23,7 @@ const CONFIG_KEY = "duo-wallet.supabase-config";
 
 export interface SupabaseConfig {
   url: string;
+  /** Publishable (`sb_publishable_…`) or legacy anon JWT. Never a secret key. */
   anonKey: string;
 }
 
@@ -31,25 +33,32 @@ let client: SupabaseClient<Database> | null = null;
 let source: ConfigSource | null = null;
 
 /**
- * Rejects blanks and the placeholder values in `.env.example`, so a half-filled
- * `.env` falls through to the connect screen instead of failing at runtime.
+ * Rejects blanks, placeholders, and secret keys so a half-filled `.env` falls
+ * through to the connect screen instead of failing at runtime — or worse,
+ * shipping a key that bypasses RLS.
  */
-function normalise(url?: string | null, anonKey?: string | null): SupabaseConfig | null {
+function normalise(url?: string | null, key?: string | null): SupabaseConfig | null {
   const cleanUrl = url?.trim().replace(/\/+$/, "") ?? "";
-  const cleanKey = anonKey?.trim() ?? "";
+  const cleanKey = key?.trim() ?? "";
 
   if (!/^https:\/\/[^\s]+\.[^\s]+$/.test(cleanUrl)) return null;
-  if (cleanKey.length < 30) return null;
-  if (cleanUrl.includes("your-project") || cleanKey.startsWith("paste-")) return null;
+  if (cleanKey.length < 20) return null;
+  if (cleanUrl.includes("your-project")) return null;
+  if (cleanKey.startsWith("paste-") || cleanKey.includes("your-")) return null;
+  // Secret keys must never live in the client — they bypass RLS.
+  if (cleanKey.startsWith("sb_secret_")) return null;
 
   return { url: cleanUrl, anonKey: cleanKey };
 }
 
 function fromBuild(): SupabaseConfig | null {
-  return normalise(
-    process.env.EXPO_PUBLIC_SUPABASE_URL,
-    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-  );
+  // Prefer the current publishable key name; fall back for older .env files.
+  const key =
+    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.EXPO_PUBLIC_SUPABASE_KEY;
+
+  return normalise(process.env.EXPO_PUBLIC_SUPABASE_URL, key);
 }
 
 async function fromStorage(): Promise<SupabaseConfig | null> {
@@ -95,7 +104,7 @@ export async function initSupabase(): Promise<ConfigSource | null> {
 export async function connectSupabase(config: SupabaseConfig): Promise<void> {
   const valid = normalise(config.url, config.anonKey);
   if (!valid) {
-    throw new Error("That does not look like a Supabase URL and anon key.");
+    throw new Error("That does not look like a Supabase URL and publishable key.");
   }
 
   const candidate = create(valid);

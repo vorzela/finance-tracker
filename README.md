@@ -27,8 +27,8 @@ the date **and** time so the ledger stays accountable.
 
 ## How to use (day to day)
 
-1. **Connect** — first launch asks for your Supabase URL and anon key (or bake
-   them into `.env` before building the APK so both phones are ready).
+1. **Connect** — first launch asks for your Supabase URL and publishable key
+   (or bake them into `.env` before building the APK so both phones are ready).
 2. **Sign up** — each person creates their own account (name, email, password,
    currency).
 3. **Share** — one person opens **Settings → Household**, creates a household,
@@ -51,15 +51,16 @@ the date **and** time so the ledger stays accountable.
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor**, paste the whole of [`supabase/schema.sql`](supabase/schema.sql), run it.
-3. Copy **Project URL** and **anon / public** key from Project Settings.
+3. Copy **Project URL** and **publishable key** (`sb_publishable_…`) from
+   Project Settings → API Keys.
 4. Either:
    - put them in `.env` (see [`.env.example`](.env.example)) before building, or
    - type them into the in-app **Connect** screen on first launch.
 5. Optional: under **Authentication → Providers → Email**, turn off "Confirm
    email" for a private couple app so sign-up is instant.
 
-The anon key is safe to ship inside an APK — every table is guarded by
-row-level security in the schema.
+The publishable key is safe to ship inside an APK — every table is guarded by
+row-level security in the schema. Never put a `sb_secret_…` key in the app.
 
 ---
 
@@ -67,7 +68,7 @@ row-level security in the schema.
 
 ```bash
 npm install
-cp .env.example .env   # fill in URL + anon key
+cp .env.example .env   # fill in URL + publishable key
 npx expo start
 ```
 

@@ -5,8 +5,8 @@
  * here stores them on the device, which means one APK can be pointed at a
  * project after the fact instead of needing a rebuild.
  *
- * The anon key is safe to hold on the device: it is the public key, and row
- * level security is what actually protects the data.
+ * The publishable key is safe to hold on the device: it is the public key, and
+ * row level security is what actually protects the data.
  */
 
 import { Logo } from "@/components/brand/logo";
@@ -88,15 +88,15 @@ export default function Connect() {
             />
 
             <Input
-              label="Anon public key"
-              placeholder="eyJhbGciOi…"
+              label="Publishable key"
+              placeholder="sb_publishable_…"
               value={anonKey}
               onChangeText={setAnonKey}
               autoCapitalize="none"
               autoCorrect={false}
               multiline
               leadingNode={<KeyIcon size={20} color="#9ca3af" />}
-              hint="Project Settings → API → anon public"
+              hint="Project Settings → API Keys → Publishable"
               required
             />
 
@@ -126,7 +126,8 @@ export default function Connect() {
             {"\n"}
             3. Turn off &quot;Confirm email&quot; under Authentication → Sign In /
             Providers so sign-up works instantly{"\n"}
-            4. Copy the project URL and anon key from Project Settings → API
+            4. Copy the project URL and publishable key from Project Settings →
+            API Keys
           </Text>
         </View>
       </KeyboardAwareScrollView>
