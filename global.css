@@ -1,0 +1,156 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@import "nativewind/theme";
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Semantic colours.
+ *
+ * Screens use these rather than raw palette shades — `bg-surface`, not
+ * `bg-white` — so light and dark are one definition instead of a `dark:`
+ * variant on every element. `@theme inline` matters: it makes the utility emit
+ * `var(--surface)` rather than baking the value in, which is what lets the
+ * media query below re-point it.
+ *
+ * The scheme itself is chosen in `lib/theme.tsx`, which calls
+ * `Appearance.setColorScheme()`; that is what this media query resolves
+ * against on a phone.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+@theme inline {
+  /* Page background, then the cards that sit on it. */
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  /* A tinted fill for chips, tiles and pressed rows. */
+  --color-subtle: var(--subtle);
+
+  /* Text, in descending order of prominence. */
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  /* Text that sits on a brand-coloured surface. */
+  --color-onbrand: var(--onbrand);
+
+  --color-hairline: var(--hairline);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+}
+
+:root {
+  --canvas: #f6f7fb;
+  --surface: #ffffff;
+  --raised: #ffffff;
+  --subtle: #f3f4f6;
+
+  --ink: #111827;
+  --muted: #6b7280;
+  --faint: #9ca3af;
+  --onbrand: #ffffff;
+
+  --hairline: #f0f1f5;
+
+  --brand: #1e3a5f;
+  --brand-soft: #eef2f8;
+  --positive: #1f9155;
+  --positive-soft: #f0faf4;
+  --negative: #e02020;
+  --negative-soft: #fff1f1;
+  --warn: #d97706;
+  --warn-soft: #fffbeb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Not pure black: a navy-tinted charcoal keeps the brand present and is
+     * easier on the eye than #000 on an OLED phone at night. */
+    --canvas: #0b1420;
+    --surface: #131f2f;
+    --raised: #1a2a3e;
+    --subtle: #22344b;
+
+    --ink: #f1f5f9;
+    --muted: #9aa9bd;
+    --faint: #6b7d94;
+    --onbrand: #ffffff;
+
+    --hairline: #22344b;
+
+    /* Mid-tones read as "brand" on a dark background where the deep navy
+     * would disappear into it. */
+    --brand: #7e9fd0;
+    --brand-soft: #1c2c42;
+    --positive: #4ade80;
+    --positive-soft: #10261c;
+    --negative: #fb7185;
+    --negative-soft: #2a1418;
+    --warn: #fbbf24;
+    --warn-soft: #2a2010;
+  }
+}
+
+@theme {
+  /* ── Fix rounded-full for React Native (avoids calc(infinity * 1px)) ── */
+  --radius-full: 9999px;
+
+  /* ── Deep Navy (primary) ── */
+  --color-navy-50: #eef2f8;
+  --color-navy-100: #d4dff0;
+  --color-navy-200: #a9bfe0;
+  --color-navy-300: #7e9fd0;
+  --color-navy-400: #5480bf;
+  --color-navy-500: #2a5298;
+  --color-navy-600: #1e3a5f;
+  --color-navy-700: #172d4c;
+  --color-navy-800: #101e33;
+  --color-navy-900: #080f1a;
+
+  /* ── Red (alerts / danger) ── */
+  --color-red-50: #fff1f1;
+  --color-red-100: #ffdede;
+  --color-red-200: #ffb8b8;
+  --color-red-300: #ff8585;
+  --color-red-400: #f85252;
+  --color-red-500: #e02020;
+  --color-red-600: #c01010;
+  --color-red-700: #9b0c0c;
+
+  /* ── Green (success) ── */
+  --color-green-50: #f0faf4;
+  --color-green-100: #d6f0e0;
+  --color-green-200: #a8dfc0;
+  --color-green-300: #6ec99a;
+  --color-green-400: #3db077;
+  --color-green-500: #1f9155;
+  --color-green-600: #166b3f;
+  --color-green-700: #0e4a2b;
+
+  /* ── Gold (warning) ── */
+  --color-gold-50: #fffbeb;
+  --color-gold-100: #fef3c7;
+  --color-gold-200: #fde68a;
+  --color-gold-300: #fcd34d;
+  --color-gold-400: #f59e0b;
+  --color-gold-500: #d97706;
+  --color-gold-600: #b45309;
+  --color-gold-700: #92400e;
+
+  /* ── Neutral / Gray ── */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+}
