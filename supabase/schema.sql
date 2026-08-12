@@ -181,13 +181,23 @@ create table if not exists public.budgets (
 );
 
 -- One budget per category per scope per month.
-create unique index if not exists budgets_scope_unique
+-- Two partial indexes: personal rows key on user_id, shared rows on group_id.
+-- (A bare CASE in an index expression needs parentheses; splitting is clearer.)
+create unique index if not exists budgets_personal_unique
   on public.budgets (
-    coalesce(group_id, '00000000-0000-0000-0000-000000000000'::uuid),
-    case when group_id is null then user_id else '00000000-0000-0000-0000-000000000000'::uuid end,
-    coalesce(category_id, '*'),
-    coalesce(month, '*')
-  );
+    user_id,
+    (coalesce(category_id, '*')),
+    (coalesce(month, '*'))
+  )
+  where group_id is null;
+
+create unique index if not exists budgets_group_unique
+  on public.budgets (
+    group_id,
+    (coalesce(category_id, '*')),
+    (coalesce(month, '*'))
+  )
+  where group_id is not null;
 
 -- ============================================================================
 -- Helpers
