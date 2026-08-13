@@ -92,15 +92,16 @@ node scripts/generate-icons.mjs
 
 ```bash
 npx expo prebuild --platform android
-cd android && ./gradlew assembleRelease
+cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
 ```
 
 The APK lands at:
 
 `android/app/build/outputs/apk/release/app-release.apk`
 
-Install on both phones. Prefer baking Supabase keys into `.env` before the
-build so neither of you has to type them.
+Release builds are **arm64-only**, with R8 minify + resource shrink (~25–30 MB). That covers modern phones; drop `-PreactNativeArchitectures=…` only if you need a fat APK for emulators too.
+
+Prefer baking Supabase keys into `.env` before the build so neither of you has to type them.
 
 > The Expo template signs release with the debug keystore by default. Fine for
 > the two of you; generate your own keystore before a public store release.

@@ -46,3 +46,4 @@ app-example
 # local build / IDE noise
 .expo/
 *.log
+DuoWallet-release.apk
