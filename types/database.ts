@@ -24,6 +24,7 @@ export type ProfileRow = {
   display_name: string;
   color: string;
   currency_code: string;
+  avatar_url: string | null;
   created_at: string;
   updated_at: string;
 };

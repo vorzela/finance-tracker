@@ -2,17 +2,43 @@
  * app/(app)/_layout.tsx
  *
  * The signed-in stack: tabs underneath, everything else pushed over the top.
- * Also the place the realtime subscription and monthly salary posting live, so
- * a shared ledger stays in sync no matter which screen is open.
+ * Realtime, monthly salary posting, and budget-limit notifications live here.
  */
 
 import { useAuth } from "@/lib/auth";
-import { MonthProvider } from "@/lib/month";
-import { useLedgerRealtime, usePostDueRecurring } from "@/lib/queries";
+import { budgetStatuses } from "@/lib/analytics";
+import { MonthProvider, useMonth } from "@/lib/month";
+import { notifyBudgetThresholds } from "@/lib/notifications";
+import {
+  useBudgets,
+  useCurrency,
+  useLedgerRealtime,
+  usePostDueRecurring,
+  useTransactions,
+} from "@/lib/queries";
 import { useThemeColors } from "@/lib/theme";
 import { Redirect, Stack } from "expo-router";
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import { View } from "react-native";
+
+function BudgetAlerts() {
+  const { monthKey } = useMonth();
+  const currency = useCurrency();
+  const transactions = useTransactions(monthKey);
+  const { data: budgets = [] } = useBudgets();
+
+  const statuses = useMemo(
+    () => budgetStatuses(budgets, transactions.data ?? [], monthKey),
+    [budgets, transactions.data, monthKey],
+  );
+
+  useEffect(() => {
+    if (statuses.length === 0) return;
+    void notifyBudgetThresholds(statuses, monthKey, currency).catch(() => {});
+  }, [statuses, monthKey, currency]);
+
+  return null;
+}
 
 function AppStack() {
   const colors = useThemeColors();
@@ -21,6 +47,7 @@ function AppStack() {
 
   return (
     <MonthProvider>
+      <BudgetAlerts />
       <Stack
         screenOptions={{
           headerShown: false,
@@ -36,6 +63,7 @@ function AppStack() {
         <Stack.Screen name="budgets" />
         <Stack.Screen name="debts" />
         <Stack.Screen name="income" />
+        <Stack.Screen name="import-mpesa" />
         <Stack.Screen name="household" />
         <Stack.Screen name="profile" />
       </Stack>

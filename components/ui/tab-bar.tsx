@@ -97,6 +97,11 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
               router.push("/entry");
             }}
+            onLongPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+              router.push("/import-mpesa" as never);
+            }}
+            delayLongPress={350}
             className="h-14 w-14 items-center justify-center rounded-full bg-navy-600 active:bg-navy-700"
             style={{
               marginTop: -28,

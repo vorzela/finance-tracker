@@ -1,26 +1,34 @@
 /**
  * app/_layout.tsx
  *
- * Providers, in the order they depend on each other: theme first (so the
- * splash and every screen below know the scheme), React Query next (the auth
- * provider clears its cache on sign-out), then auth, then the active ledger.
- *
- * The splash screen is held until auth has resolved so the app never flashes
- * the sign-in screen at someone who is already signed in.
+ * Providers, fonts and the root stack. Theme (scheme + accent + font) loads
+ * first so splash does not flash the wrong palette.
  */
 
 import "react-native-url-polyfill/auto";
 import "../global.css";
 
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_600SemiBold,
+  DMSans_700Bold,
+} from "@expo-google-fonts/dm-sans";
+import {
+  SourceSerif4_400Regular,
+  SourceSerif4_600SemiBold,
+  SourceSerif4_700Bold,
+} from "@expo-google-fonts/source-serif-4";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ScopeProvider } from "@/lib/scope";
-import { ThemeProvider, useTheme, useThemeColors } from "@/lib/theme";
+import { ThemeProvider, useAppearance, useThemeColors } from "@/lib/theme";
 import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
-import { AppState, type AppStateStatus } from "react-native";
+import { AppState, Text, type AppStateStatus } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -32,7 +40,6 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       staleTime: 30_000,
-      // Keep inactive month caches short so phones with less RAM stay light.
       gcTime: 5 * 60_000,
       refetchOnMount: false,
       refetchOnReconnect: true,
@@ -53,20 +60,40 @@ focusManager.setEventListener((handleFocus) => {
 
 function SplashGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
-  const { isReady } = useTheme();
+  const { isReady } = useAppearance();
+  const [fontsLoaded] = useFonts({
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_600SemiBold,
+    DMSans_700Bold,
+    SourceSerif4_400Regular,
+    SourceSerif4_600SemiBold,
+    SourceSerif4_700Bold,
+  });
 
   useEffect(() => {
-    if (status !== "loading" && isReady) {
+    if (status !== "loading" && isReady && fontsLoaded) {
       void SplashScreen.hideAsync();
     }
-  }, [status, isReady]);
+  }, [status, isReady, fontsLoaded]);
 
+  if (!fontsLoaded) return null;
   return <>{children}</>;
 }
 
 function RootStack() {
-  const { scheme } = useTheme();
+  const { scheme, font } = useAppearance();
   const colors = useThemeColors();
+  const fontFamily = font === "serif" ? "SourceSerif4_400Regular" : "DMSans_400Regular";
+
+  useEffect(() => {
+    const TextWithDefaults = Text as typeof Text & {
+      defaultProps?: { style?: object | object[] };
+    };
+    TextWithDefaults.defaultProps = TextWithDefaults.defaultProps ?? {};
+    const prev = TextWithDefaults.defaultProps.style;
+    TextWithDefaults.defaultProps.style = [{ fontFamily }, prev].flat().filter(Boolean);
+  }, [fontFamily]);
 
   return (
     <>
@@ -94,7 +121,7 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <AuthProvider>
               <ScopeProvider>
-                <KeyboardProvider>
+                <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
                   <SplashGate>
                     <RootStack />
                   </SplashGate>

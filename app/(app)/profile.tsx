@@ -1,8 +1,7 @@
 /**
  * app/(app)/profile.tsx
  *
- * Name, colour and currency. The colour is not decoration: it is how each
- * person is identified in every chart and row on a shared ledger.
+ * Name, photo, colour and currency.
  */
 
 import { Avatar } from "@/components/ui/avatar";
@@ -15,12 +14,12 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { CURRENCY_OPTIONS, currencySymbol } from "@/lib/currency";
 import { getErrorMessage } from "@/lib/error";
-import { useProfile, useUpdateProfile } from "@/lib/queries";
+import { useProfile, useUpdateProfile, useUploadAvatar } from "@/lib/queries";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { CheckIcon } from "phosphor-react-native";
+import { CameraIcon, CheckIcon } from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 const MEMBER_COLORS = [
   "#2a5298",
@@ -39,11 +38,13 @@ export default function Profile() {
   const { user } = useAuth();
   const { data: profile, isLoading } = useProfile();
   const update = useUpdateProfile();
+  const uploadAvatar = useUploadAvatar();
   const router = useRouter();
 
   const [displayName, setDisplayName] = useState("");
   const [color, setColor] = useState(MEMBER_COLORS[0]);
   const [currencyCode, setCurrencyCode] = useState("KES");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -53,6 +54,7 @@ export default function Profile() {
     setDisplayName(profile.display_name);
     setColor(profile.color);
     setCurrencyCode(profile.currency_code);
+    setAvatarUrl(profile.avatar_url);
     setHydrated(true);
   }, [profile, hydrated]);
 
@@ -61,6 +63,30 @@ export default function Profile() {
     (displayName.trim() !== profile.display_name ||
       color !== profile.color ||
       currencyCode !== profile.currency_code);
+
+  const pickPhoto = async () => {
+    setError(null);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError("Photo library permission is needed to set a profile picture.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.75,
+    });
+    if (result.canceled || !result.assets[0]) return;
+
+    try {
+      const url = await uploadAvatar.mutateAsync(result.assets[0].uri);
+      setAvatarUrl(url);
+    } catch (cause) {
+      setError(getErrorMessage(cause, "Couldn't upload photo"));
+    }
+  };
 
   const submit = async () => {
     if (displayName.trim().length < 2) {
@@ -85,19 +111,31 @@ export default function Profile() {
     <Screen>
       <Header title="Your profile" back />
 
-      <KeyboardAwareScrollView
-        bottomOffset={24}
+      <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40, gap: 16 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <Card className="items-center gap-3 py-6">
-          <Avatar name={displayName || "Me"} color={color} size="xl" />
+          <Pressable onPress={pickPhoto} className="items-center gap-2">
+            <Avatar
+              name={displayName || "Me"}
+              color={color}
+              uri={avatarUrl}
+              size="xl"
+            />
+            <View className="flex-row items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1.5">
+              <CameraIcon size={14} color="#1e3a5f" weight="bold" />
+              <Text className="text-xs font-semibold text-brand">
+                {uploadAvatar.isPending ? "Uploading…" : "Change photo"}
+              </Text>
+            </View>
+          </Pressable>
           <View className="items-center">
-            <Text className="text-lg font-bold tracking-tight text-gray-900">
+            <Text className="text-lg font-bold tracking-tight text-ink">
               {displayName || "Your name"}
             </Text>
-            <Text className="text-sm text-gray-500">{user?.email}</Text>
+            <Text className="text-sm text-muted">{user?.email}</Text>
           </View>
         </Card>
 
@@ -113,23 +151,18 @@ export default function Profile() {
 
           <Pressable
             onPress={() => setCurrencyOpen(true)}
-            className="flex-row items-center justify-between rounded-2xl border border-gray-200/60 bg-gray-50 px-4 py-4 active:bg-gray-100"
+            className="flex-row items-center justify-between rounded-2xl border border-hairline bg-subtle px-4 py-4 active:bg-subtle"
           >
             <View>
-              <Text className="text-xs font-bold uppercase tracking-wider text-gray-500">
+              <Text className="text-xs font-bold uppercase tracking-wider text-faint">
                 Currency
               </Text>
-              <Text className="mt-1 text-base text-gray-900">
+              <Text className="mt-1 text-base text-ink">
                 {currencyCode} · {currencySymbol(currencyCode)}
               </Text>
             </View>
-            <Text className="text-sm font-semibold text-navy-500">Change</Text>
+            <Text className="text-sm font-semibold text-brand">Change</Text>
           </Pressable>
-
-          <Text className="text-xs leading-5 text-gray-400">
-            Shared ledgers use the household&apos;s own currency, so both of you always
-            see the same numbers there.
-          </Text>
         </Card>
 
         <Section title="Your colour">
@@ -141,7 +174,7 @@ export default function Profile() {
                   onPress={() => setColor(option)}
                   className={cn(
                     "h-11 w-11 items-center justify-center rounded-full",
-                    color === option && "border-[3px] border-gray-900",
+                    color === option && "border-[3px] border-ink",
                   )}
                   style={{ backgroundColor: option }}
                 >
@@ -165,7 +198,7 @@ export default function Profile() {
         >
           {dirty ? "Save changes" : "Nothing to save"}
         </Button>
-      </KeyboardAwareScrollView>
+      </ScrollView>
 
       <Sheet
         visible={currencyOpen}

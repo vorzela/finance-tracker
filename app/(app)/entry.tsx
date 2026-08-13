@@ -26,7 +26,6 @@ import { getErrorMessage } from "@/lib/error";
 import {
   useAccounts,
   useCurrency,
-  useDebts,
   useDeleteTransaction,
   useMembers,
   useSaveTransaction,
@@ -49,8 +48,14 @@ import {
   WalletIcon,
 } from "phosphor-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, Pressable, Text, View } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { TransactionKind } from "@/types/database";
 
@@ -79,15 +84,13 @@ export default function Entry() {
   const existing = useTransaction(id);
   const { accounts } = useAccounts();
   const { data: members } = useMembers();
-  const { debts } = useDebts();
   const save = useSaveTransaction();
   const remove = useDeleteTransaction();
 
   const isShared = scope.kind === "group";
-  const openDebts = useMemo(
-    () => debts.filter((debt) => !debt.closed && debt.direction === "owed_by_me"),
-    [debts],
-  );
+  // Debts are optional on this screen — loading them eagerly crashed some
+  // release builds when the RPC was slow or missing. Link a debt from Debts.
+  const openDebts: { id: string; name: string; balance: number }[] = [];
 
   const [kind, setKind] = useState<TransactionKind>("expense");
   const [amountText, setAmountText] = useState("");
@@ -222,10 +225,10 @@ export default function Entry() {
         }
       />
 
-      <KeyboardAwareScrollView
-        bottomOffset={110}
+      <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32, gap: 16 }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         <Segmented
@@ -447,7 +450,7 @@ export default function Entry() {
         />
 
         {error ? <ErrorNote message={error} /> : null}
-      </KeyboardAwareScrollView>
+      </ScrollView>
 
       <View
         className="border-t border-hairline bg-surface px-4 pt-3"

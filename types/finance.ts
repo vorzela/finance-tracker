@@ -68,6 +68,7 @@ export interface Member {
   role: MemberRole;
   /** True for the signed-in user, used for "You" labels. */
   isSelf: boolean;
+  avatarUrl: string | null;
 }
 
 export interface Account extends AccountRow {

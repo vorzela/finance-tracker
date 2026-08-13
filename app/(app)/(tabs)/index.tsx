@@ -30,6 +30,7 @@ import {
   useTransactionViews,
 } from "@/lib/queries";
 import { useScope } from "@/lib/scope";
+import { useThemeColors } from "@/lib/theme";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter } from "expo-router";
 import {
@@ -56,6 +57,7 @@ export default function Home() {
   const views = useTransactionViews(rows.slice(0, 5));
   const { accounts } = useAccounts();
   const couple = useCoupleBalance();
+  const colors = useThemeColors();
 
   const isShared = scope.kind === "group";
   const firstName = (profile?.display_name ?? "there").split(" ")[0];
@@ -88,6 +90,7 @@ export default function Home() {
               <Avatar
                 name={profile?.display_name ?? "Me"}
                 color={profile?.color}
+                uri={profile?.avatar_url}
                 size="lg"
               />
             </Pressable>
@@ -99,7 +102,7 @@ export default function Home() {
         {/* ── Hero ─────────────────────────────────────────────────────── */}
         <View className="overflow-hidden rounded-[28px]">
           <LinearGradient
-            colors={["#2f5ba8", "#1b3560", "#0d1c33"]}
+            colors={colors.gradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={{ padding: 20 }}

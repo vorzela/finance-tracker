@@ -123,7 +123,7 @@ export async function fetchProfile(userId: string): Promise<ProfileRow> {
 
 export async function updateProfile(
   userId: string,
-  patch: Partial<Pick<ProfileRow, "display_name" | "color" | "currency_code">>,
+  patch: Partial<Pick<ProfileRow, "display_name" | "color" | "currency_code" | "avatar_url">>,
 ): Promise<ProfileRow> {
   const { data, error } = await supabase()
     .from("profiles")
@@ -134,6 +134,23 @@ export async function updateProfile(
 
   if (error) fail(error, "save your profile");
   return data;
+}
+
+/** Uploads a local image to the public `avatars` bucket and returns its URL. */
+export async function uploadAvatar(userId: string, localUri: string): Promise<string> {
+  const response = await fetch(localUri);
+  const blob = await response.blob();
+  const ext = (localUri.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const path = `${userId}/${Date.now()}.${ext}`;
+
+  const { error } = await supabase().storage.from("avatars").upload(path, blob, {
+    upsert: true,
+    contentType: blob.type || `image/${ext}`,
+  });
+  if (error) fail(error, "upload your photo");
+
+  const { data } = supabase().storage.from("avatars").getPublicUrl(path);
+  return data.publicUrl;
 }
 
 // ── Groups ──────────────────────────────────────────────────────────────────
@@ -231,7 +248,7 @@ export async function leaveGroup(groupId: string, userId: string): Promise<void>
 interface MemberWithProfile {
   role: MemberRole;
   user_id: string;
-  profile: Pick<ProfileRow, "id" | "display_name" | "color"> | null;
+  profile: Pick<ProfileRow, "id" | "display_name" | "color" | "avatar_url"> | null;
 }
 
 /** On a personal ledger there is exactly one member: you. */
@@ -245,13 +262,14 @@ export async function fetchMembers(scope: Scope, userId: string): Promise<Member
         color: profile.color,
         role: "owner",
         isSelf: true,
+        avatarUrl: profile.avatar_url,
       },
     ];
   }
 
   const { data, error } = await supabase()
     .from("group_members")
-    .select("role, user_id, profile:profiles(id, display_name, color)")
+    .select("role, user_id, profile:profiles(id, display_name, color, avatar_url)")
     .eq("group_id", scope.groupId)
     .order("joined_at", { ascending: true });
 
@@ -263,6 +281,7 @@ export async function fetchMembers(scope: Scope, userId: string): Promise<Member
     color: row.profile?.color ?? "#6b7280",
     role: row.role,
     isSelf: row.user_id === userId,
+    avatarUrl: row.profile?.avatar_url ?? null,
   }));
 }
 

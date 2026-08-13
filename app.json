@@ -2,7 +2,7 @@
   "expo": {
     "name": "Duo Wallet",
     "slug": "finance-tracker",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "duowallet",
@@ -23,7 +23,14 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.vorzela.duowallet",
-      "versionCode": 1
+      "versionCode": 2,
+      "permissions": [
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "output": "static",
@@ -53,7 +60,22 @@
             "useLegacyPackaging": true
           }
         }
-      ]
+      ],
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Duo Wallet uses your photos for a profile picture."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#1e3a5f"
+        }
+      ],
+      "./plugins/with-sms-permissions.js"
     ],
     "experiments": {
       "typedRoutes": true,

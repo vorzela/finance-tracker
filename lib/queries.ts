@@ -58,7 +58,7 @@ export function useProfile() {
 export function useUpdateProfile(): UseMutationResult<
   ProfileRow,
   Error,
-  Partial<Pick<ProfileRow, "display_name" | "color" | "currency_code">>
+  Partial<Pick<ProfileRow, "display_name" | "color" | "currency_code" | "avatar_url">>
 > {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -68,6 +68,19 @@ export function useUpdateProfile(): UseMutationResult<
     onSuccess: (profile) => {
       queryClient.setQueryData(keys.profile(profile.id), profile);
       void queryClient.invalidateQueries({ queryKey: ["members"] });
+    },
+  });
+}
+
+export function useUploadAvatar() {
+  const { user } = useAuth();
+  const update = useUpdateProfile();
+
+  return useMutation({
+    mutationFn: async (localUri: string) => {
+      const url = await api.uploadAvatar(user!.id, localUri);
+      await update.mutateAsync({ avatar_url: url });
+      return url;
     },
   });
 }

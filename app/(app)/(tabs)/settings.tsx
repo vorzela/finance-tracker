@@ -14,19 +14,22 @@ import { useAuth } from "@/lib/auth";
 import { currencySymbol } from "@/lib/currency";
 import { useAccounts, useProfile } from "@/lib/queries";
 import { useScope } from "@/lib/scope";
-import { THEME_OPTIONS, useTheme } from "@/lib/theme";
+import { THEME_OPTIONS, ACCENTS, FONT_OPTIONS, useAppearance } from "@/lib/theme";
 import Constants from "expo-constants";
 import { Link, useRouter } from "expo-router";
 import {
   BriefcaseIcon,
   CaretRightIcon,
+  ChatTeardropTextIcon,
   CurrencyCircleDollarIcon,
   DatabaseIcon,
   HouseLineIcon,
   MoonStarsIcon,
+  PaintBrushIcon,
   ScalesIcon,
   SignOutIcon,
   TargetIcon,
+  TextTIcon,
   UserIcon,
   WalletIcon,
 } from "phosphor-react-native";
@@ -38,12 +41,17 @@ export default function Settings() {
   const { data: profile } = useProfile();
   const { groups, scope, activeGroup } = useScope();
   const { accounts } = useAccounts();
-  const { preference, setPreference } = useTheme();
+  const { schemePreference, setSchemePreference, accent, setAccent, font, setFont } =
+    useAppearance();
   const router = useRouter();
   const [themeOpen, setThemeOpen] = useState(false);
+  const [accentOpen, setAccentOpen] = useState(false);
+  const [fontOpen, setFontOpen] = useState(false);
 
   const themeLabel =
-    THEME_OPTIONS.find((option) => option.value === preference)?.label ?? "Match phone";
+    THEME_OPTIONS.find((option) => option.value === schemePreference)?.label ??
+    "Match phone";
+  const fontLabel = FONT_OPTIONS.find((option) => option.value === font)?.label ?? "DM Sans";
 
   const confirmSignOut = () => {
     Alert.alert("Sign out?", "Your data stays in Supabase and syncs back when you return.", [
@@ -67,6 +75,7 @@ export default function Settings() {
               <Avatar
                 name={profile?.display_name ?? "Me"}
                 color={profile?.color}
+                uri={profile?.avatar_url}
                 size="xl"
               />
               <View className="flex-1">
@@ -137,6 +146,17 @@ export default function Settings() {
             />
             <Row
               leading={
+                <IconTile color="#22a06b">
+                  <ChatTeardropTextIcon size={20} color="#22a06b" weight="duotone" />
+                </IconTile>
+              }
+              title="Import M-Pesa"
+              subtitle="Read SMS or paste a confirmation"
+              chevron
+              onPress={() => router.push("/import-mpesa" as never)}
+            />
+            <Row
+              leading={
                 <IconTile color="#1f9155">
                   <BriefcaseIcon size={20} color="#1f9155" weight="duotone" />
                 </IconTile>
@@ -193,11 +213,33 @@ export default function Settings() {
                   <MoonStarsIcon size={20} color="#1e3a5f" weight="duotone" />
                 </IconTile>
               }
-              title="Theme"
+              title="Light / dark"
               subtitle={themeLabel}
               chevron
-              last
               onPress={() => setThemeOpen(true)}
+            />
+            <Row
+              leading={
+                <IconTile color={accent.chip}>
+                  <PaintBrushIcon size={20} color={accent.chip} weight="duotone" />
+                </IconTile>
+              }
+              title="Colour theme"
+              subtitle={accent.label}
+              chevron
+              onPress={() => setAccentOpen(true)}
+            />
+            <Row
+              leading={
+                <IconTile color="#4b5563">
+                  <TextTIcon size={20} color="#4b5563" weight="duotone" />
+                </IconTile>
+              }
+              title="Font"
+              subtitle={fontLabel}
+              chevron
+              last
+              onPress={() => setFontOpen(true)}
             />
           </Card>
         </Section>
@@ -244,16 +286,51 @@ export default function Settings() {
         </View>
       </ScreenScroll>
 
-      <Sheet visible={themeOpen} onClose={() => setThemeOpen(false)} title="Theme">
+      <Sheet visible={themeOpen} onClose={() => setThemeOpen(false)} title="Light / dark">
         {THEME_OPTIONS.map((option) => (
           <SheetOption
             key={option.value}
             label={option.label}
             description={option.hint}
-            selected={preference === option.value}
+            selected={schemePreference === option.value}
             onPress={() => {
-              setPreference(option.value);
+              setSchemePreference(option.value);
               setThemeOpen(false);
+            }}
+          />
+        ))}
+      </Sheet>
+
+      <Sheet visible={accentOpen} onClose={() => setAccentOpen(false)} title="Colour theme">
+        {ACCENTS.map((option) => (
+          <SheetOption
+            key={option.id}
+            label={option.label}
+            selected={accent.id === option.id}
+            leading={
+              <View
+                className="h-8 w-8 rounded-full"
+                style={{ backgroundColor: option.chip }}
+              />
+            }
+            onPress={() => {
+              setAccent(option.id);
+              setAccentOpen(false);
+            }}
+          />
+        ))}
+      </Sheet>
+
+      <Sheet visible={fontOpen} onClose={() => setFontOpen(false)} title="Font">
+        {FONT_OPTIONS.map((option) => (
+          <SheetOption
+            key={option.value}
+            label={option.label}
+            description={option.hint}
+            selected={font === option.value}
+            onPress={() => {
+              setFont(option.value);
+              setFontOpen(false);
             }}
           />
         ))}
