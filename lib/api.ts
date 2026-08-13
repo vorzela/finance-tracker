@@ -343,6 +343,7 @@ export async function createAccount(
   userId: string,
   draft: AccountDraft,
 ): Promise<void> {
+  const openingBalance = Math.max(0, Math.round(draft.openingBalance));
   const { error } = await supabase()
     .from("accounts")
     .insert({
@@ -350,7 +351,7 @@ export async function createAccount(
       group_id: scopeGroupId(scope),
       name: draft.name.trim(),
       type: draft.type,
-      opening_balance: draft.openingBalance,
+      opening_balance: openingBalance,
       color: draft.color,
     });
 
@@ -361,12 +362,13 @@ export async function updateAccount(
   id: string,
   draft: AccountDraft,
 ): Promise<void> {
+  const openingBalance = Math.max(0, Math.round(draft.openingBalance));
   const { error } = await supabase()
     .from("accounts")
     .update({
       name: draft.name.trim(),
       type: draft.type,
-      opening_balance: draft.openingBalance,
+      opening_balance: openingBalance,
       color: draft.color,
     })
     .eq("id", id);

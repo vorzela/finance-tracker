@@ -26,6 +26,7 @@ import {
   HouseLineIcon,
   MoonStarsIcon,
   PaintBrushIcon,
+  QuestionIcon,
   ScalesIcon,
   SignOutIcon,
   TargetIcon,
@@ -41,7 +42,7 @@ export default function Settings() {
   const { data: profile } = useProfile();
   const { groups, scope, activeGroup } = useScope();
   const { accounts } = useAccounts();
-  const { schemePreference, setSchemePreference, accent, setAccent, font, setFont } =
+  const { schemePreference, setSchemePreference, accent, setAccent, font, setFont, italic, setItalic } =
     useAppearance();
   const router = useRouter();
   const [themeOpen, setThemeOpen] = useState(false);
@@ -51,7 +52,10 @@ export default function Settings() {
   const themeLabel =
     THEME_OPTIONS.find((option) => option.value === schemePreference)?.label ??
     "Match phone";
-  const fontLabel = FONT_OPTIONS.find((option) => option.value === font)?.label ?? "DM Sans";
+  const fontLabel = (() => {
+    const base = FONT_OPTIONS.find((option) => option.value === font)?.label ?? "DM Sans";
+    return italic ? `${base} · Italic` : base;
+  })();
 
   const confirmSignOut = () => {
     Alert.alert("Sign out?", "Your data stays in Supabase and syncs back when you return.", [
@@ -244,6 +248,23 @@ export default function Settings() {
           </Card>
         </Section>
 
+        <Section title="Help & legal">
+          <Card flush>
+            <Row
+              leading={
+                <IconTile color="#1e3a5f">
+                  <QuestionIcon size={20} color="#1e3a5f" weight="duotone" />
+                </IconTile>
+              }
+              title="Help"
+              subtitle="Usage guide, FAQ, terms & privacy"
+              chevron
+              last
+              onPress={() => router.push("/help")}
+            />
+          </Card>
+        </Section>
+
         <Section title="Account">
           <Card flush>
             <Row
@@ -330,10 +351,15 @@ export default function Settings() {
             selected={font === option.value}
             onPress={() => {
               setFont(option.value);
-              setFontOpen(false);
             }}
           />
         ))}
+        <SheetOption
+          label={italic ? "Italic on" : "Italic off"}
+          description="Every font includes a matching italic"
+          selected={italic}
+          onPress={() => setItalic(!italic)}
+        />
       </Sheet>
     </Screen>
   );

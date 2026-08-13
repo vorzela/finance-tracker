@@ -2,7 +2,7 @@
   "expo": {
     "name": "Duo Wallet",
     "slug": "finance-tracker",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "duowallet",
@@ -23,7 +23,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.vorzela.duowallet",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "android.permission.READ_SMS",
         "android.permission.RECEIVE_SMS",

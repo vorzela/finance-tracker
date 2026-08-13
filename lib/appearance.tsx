@@ -19,8 +19,8 @@ import { Appearance, useColorScheme } from "react-native";
 const STORAGE_KEY = "duo-wallet.appearance";
 
 export type SchemePreference = "system" | "light" | "dark";
-export type AccentId = "midnight" | "emerald" | "ocean" | "sand" | "rose";
-export type FontId = "sans" | "serif";
+export type AccentId = "midnight" | "emerald" | "ocean" | "sand" | "rose" | "slate";
+export type FontId = "sans" | "serif" | "nunito" | "fraunces" | "lora" | "literata";
 
 export interface AccentPalette {
   id: AccentId;
@@ -72,6 +72,14 @@ export const ACCENTS: AccentPalette[] = [
     gradient: ["#e11d48", "#9f1239", "#4c0519"],
     chip: "#e11d48",
   },
+  {
+    id: "slate",
+    label: "Slate",
+    brand: "#334155",
+    brandSoft: "#f1f5f9",
+    gradient: ["#64748b", "#334155", "#0f172a"],
+    chip: "#475569",
+  },
 ];
 
 export const SCHEME_OPTIONS: { value: SchemePreference; label: string; hint: string }[] = [
@@ -81,14 +89,42 @@ export const SCHEME_OPTIONS: { value: SchemePreference; label: string; hint: str
 ];
 
 export const FONT_OPTIONS: { value: FontId; label: string; hint: string }[] = [
-  { value: "sans", label: "DM Sans", hint: "Clean modern UI" },
-  { value: "serif", label: "Source Serif", hint: "Editorial money feel" },
+  { value: "sans", label: "DM Sans", hint: "Clean modern · italic available" },
+  { value: "serif", label: "Source Serif", hint: "Editorial · italic available" },
+  { value: "nunito", label: "Nunito", hint: "Soft rounded · italic available" },
+  { value: "fraunces", label: "Fraunces", hint: "Warm display · italic available" },
+  { value: "lora", label: "Lora", hint: "Classic serif · italic available" },
+  { value: "literata", label: "Literata", hint: "Reading serif · italic available" },
 ];
+
+/** Maps a font choice (+ italic) to the loaded expo-font family name. */
+export function fontFamilyName(font: FontId, italic: boolean): string {
+  const map: Record<FontId, { regular: string; italic: string }> = {
+    sans: { regular: "DMSans_400Regular", italic: "DMSans_400Regular_Italic" },
+    serif: {
+      regular: "SourceSerif4_400Regular",
+      italic: "SourceSerif4_400Regular_Italic",
+    },
+    nunito: { regular: "Nunito_400Regular", italic: "Nunito_400Regular_Italic" },
+    fraunces: {
+      regular: "Fraunces_400Regular",
+      italic: "Fraunces_400Regular_Italic",
+    },
+    lora: { regular: "Lora_400Regular", italic: "Lora_400Regular_Italic" },
+    literata: {
+      regular: "Literata_400Regular",
+      italic: "Literata_400Regular_Italic",
+    },
+  };
+  const pair = map[font] ?? map.sans;
+  return italic ? pair.italic : pair.regular;
+}
 
 interface StoredAppearance {
   scheme: SchemePreference;
   accent: AccentId;
   font: FontId;
+  italic?: boolean;
 }
 
 interface AppearanceContextValue {
@@ -96,9 +132,11 @@ interface AppearanceContextValue {
   scheme: "light" | "dark";
   accent: AccentPalette;
   font: FontId;
+  italic: boolean;
   setSchemePreference: (value: SchemePreference) => void;
   setAccent: (value: AccentId) => void;
   setFont: (value: FontId) => void;
+  setItalic: (value: boolean) => void;
   isReady: boolean;
 }
 
@@ -178,6 +216,7 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     useState<SchemePreference>("system");
   const [accentId, setAccentId] = useState<AccentId>("midnight");
   const [font, setFontState] = useState<FontId>("sans");
+  const [italic, setItalicState] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const scheme = useColorScheme() ?? "light";
 
@@ -194,8 +233,11 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
         if (parsed.accent && ACCENTS.some((a) => a.id === parsed.accent)) {
           setAccentId(parsed.accent);
         }
-        if (parsed.font === "sans" || parsed.font === "serif") {
+        if (parsed.font && FONT_OPTIONS.some((option) => option.value === parsed.font)) {
           setFontState(parsed.font);
+        }
+        if (typeof parsed.italic === "boolean") {
+          setItalicState(parsed.italic);
         }
       })
       .catch(() => {})
@@ -215,25 +257,33 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     (value: SchemePreference) => {
       setSchemePreferenceState(value);
       applyScheme(value);
-      persist({ scheme: value, accent: accentId, font });
+      persist({ scheme: value, accent: accentId, font, italic });
     },
-    [accentId, font, persist],
+    [accentId, font, italic, persist],
   );
 
   const setAccent = useCallback(
     (value: AccentId) => {
       setAccentId(value);
-      persist({ scheme: schemePreference, accent: value, font });
+      persist({ scheme: schemePreference, accent: value, font, italic });
     },
-    [schemePreference, font, persist],
+    [schemePreference, font, italic, persist],
   );
 
   const setFont = useCallback(
     (value: FontId) => {
       setFontState(value);
-      persist({ scheme: schemePreference, accent: accentId, font: value });
+      persist({ scheme: schemePreference, accent: accentId, font: value, italic });
     },
-    [schemePreference, accentId, persist],
+    [schemePreference, accentId, italic, persist],
+  );
+
+  const setItalic = useCallback(
+    (value: boolean) => {
+      setItalicState(value);
+      persist({ scheme: schemePreference, accent: accentId, font, italic: value });
+    },
+    [schemePreference, accentId, font, persist],
   );
 
   const value = useMemo<AppearanceContextValue>(
@@ -242,12 +292,25 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
       scheme,
       accent: accentById(accentId),
       font,
+      italic,
       setSchemePreference,
       setAccent,
       setFont,
+      setItalic,
       isReady,
     }),
-    [schemePreference, scheme, accentId, font, setSchemePreference, setAccent, setFont, isReady],
+    [
+      schemePreference,
+      scheme,
+      accentId,
+      font,
+      italic,
+      setSchemePreference,
+      setAccent,
+      setFont,
+      setItalic,
+      isReady,
+    ],
   );
 
   return (
@@ -279,7 +342,7 @@ export function useThemeColors(): ThemeColors {
   return {
     ...base,
     brand,
-    brandSoft: scheme === "dark" ? "#1c2c42" : accent.brandSoft,
+    brandSoft: scheme === "dark" ? softDark(accent.brandSoft) : accent.brandSoft,
     gradient: accent.gradient,
   };
 }
@@ -290,9 +353,19 @@ export function colorsFor(scheme: "light" | "dark", accentId: AccentId = "midnig
   return {
     ...base,
     brand: scheme === "dark" ? lighten(accent.brand) : accent.brand,
-    brandSoft: scheme === "dark" ? "#1c2c42" : accent.brandSoft,
+    brandSoft: scheme === "dark" ? softDark(accent.brandSoft) : accent.brandSoft,
     gradient: accent.gradient,
   };
+}
+
+function softDark(lightSoft: string): string {
+  // Keep a dark-tinted soft fill that still hints at the accent.
+  if (lightSoft === "#e8f6ee") return "#10261c";
+  if (lightSoft === "#e6f7fb") return "#0c2a33";
+  if (lightSoft === "#f8efe4") return "#2a2010";
+  if (lightSoft === "#fde8ef") return "#2a1418";
+  if (lightSoft === "#f1f5f9") return "#1e293b";
+  return "#1c2c42";
 }
 
 function lighten(hex: string): string {
@@ -302,6 +375,7 @@ function lighten(hex: string): string {
   if (hex === "#0e7490") return "#67e8f9";
   if (hex === "#92400e") return "#fbbf24";
   if (hex === "#9f1239") return "#fb7185";
+  if (hex === "#334155") return "#94a3b8";
   return hex;
 }
 

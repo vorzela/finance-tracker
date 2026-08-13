@@ -34,8 +34,8 @@ import type { Account } from "@/types/finance";
 
 const TYPE_OPTIONS: { value: AccountType; label: string }[] = [
   { value: "cash", label: "Cash" },
+  { value: "mobile", label: "M-Pesa" },
   { value: "bank", label: "Bank" },
-  { value: "mobile", label: "Mobile" },
   { value: "card", label: "Card" },
 ];
 
@@ -95,13 +95,25 @@ export default function Accounts() {
       return;
     }
 
+    const parsedOpening = openingText
+      ? parseAmount(openingText, currency)
+      : 0;
+    if (parsedOpening === null) {
+      setFormError("Opening balance must be a number.");
+      return;
+    }
+    if (parsedOpening < 0) {
+      setFormError("Opening balance must be 0 or more. Running balance can still go negative.");
+      return;
+    }
+
     try {
       await saveAccount.mutateAsync({
         id: editing?.id,
         draft: {
           name,
           type,
-          openingBalance: openingText ? (parseAmount(openingText, currency) ?? 0) : 0,
+          openingBalance: parsedOpening,
           color,
         },
       });
@@ -163,7 +175,7 @@ export default function Accounts() {
               <EmptyState
                 icon={<WalletIcon size={28} color="#1e3a5f" weight="duotone" />}
                 title="No accounts yet"
-                message="Accounts are optional, but they let the app track balances as well as spending."
+                message="Add Cash, M-Pesa, Bank and Card with an opening balance (0 or more). Spending counts from there — balances can go negative."
                 action={
                   <Button onPress={openNew} icon={<PlusIcon size={20} color="#fff" weight="bold" />}>
                     Add an account
@@ -276,7 +288,7 @@ export default function Accounts() {
                 {currencySymbol(currency)}
               </Text>
             }
-            hint="What's in it right now, before you log anything."
+            hint="Minimum 0. Live balance = opening + transactions (can go negative)."
           />
 
           <View className="gap-2">

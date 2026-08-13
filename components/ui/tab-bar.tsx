@@ -1,12 +1,12 @@
 /**
  * components/ui/tab-bar.tsx
  *
- * Floating tab bar with the add button raised in the middle. Logging a spend is
- * the thing people do ten times a day, so it gets the biggest target on screen
- * and sits under the thumb.
+ * Floating tab bar with the add button raised in the middle. Active icons and
+ * the + button follow the selected colour theme.
  */
 
 import { cn } from "@/lib/cn";
+import { useThemeColors } from "@/lib/theme";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -35,6 +35,7 @@ export const TAB_BAR_HEIGHT = 76;
 export function TabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const colors = useThemeColors();
 
   const routes = state.routes.filter((route) => route.name in TABS);
   const half = Math.ceil(routes.length / 2);
@@ -57,14 +58,15 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
       >
         <Glyph
           size={23}
-          color={isActive ? "#1e3a5f" : "#9ca3af"}
+          color={isActive ? colors.brand : colors.faint}
           weight={isActive ? "fill" : "regular"}
         />
         <Text
           className={cn(
             "text-[10px] font-semibold tracking-tight",
-            isActive ? "text-navy-600" : "text-gray-400",
+            isActive ? "text-brand" : "text-gray-400",
           )}
+          style={isActive ? { color: colors.brand } : undefined}
         >
           {config.label}
         </Text>
@@ -82,7 +84,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         className="flex-row items-center rounded-[28px] border border-gray-200/70 bg-white px-2"
         style={{
           height: TAB_BAR_HEIGHT - 16,
-          shadowColor: "#0d1c33",
+          shadowColor: colors.chrome,
           shadowOpacity: 0.12,
           shadowRadius: 16,
           shadowOffset: { width: 0, height: 6 },
@@ -102,10 +104,11 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
               router.push("/import-mpesa" as never);
             }}
             delayLongPress={350}
-            className="h-14 w-14 items-center justify-center rounded-full bg-navy-600 active:bg-navy-700"
+            className="h-14 w-14 items-center justify-center rounded-full active:opacity-80"
             style={{
               marginTop: -28,
-              shadowColor: "#1e3a5f",
+              backgroundColor: colors.brand,
+              shadowColor: colors.brand,
               shadowOpacity: 0.35,
               shadowRadius: 12,
               shadowOffset: { width: 0, height: 6 },
@@ -113,7 +116,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             }}
             accessibilityLabel="Add a transaction"
           >
-            <PlusIcon size={26} color="#ffffff" weight="bold" />
+            <PlusIcon size={26} color={colors.onBrand} weight="bold" />
           </Pressable>
         </View>
 

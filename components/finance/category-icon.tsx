@@ -30,6 +30,7 @@ import {
   LightningIcon,
   MoneyIcon,
   PiggyBankIcon,
+  PopcornIcon,
   ReceiptIcon,
   StorefrontIcon,
   TagIcon,
@@ -44,6 +45,7 @@ import React from "react";
 const GLYPHS: Record<CategoryIcon, Icon> = {
   basket: BasketIcon,
   fork: ForkKnifeIcon,
+  snack: PopcornIcon,
   bus: BusIcon,
   fuel: GasPumpIcon,
   phone: DeviceMobileIcon,

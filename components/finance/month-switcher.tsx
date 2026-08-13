@@ -8,6 +8,7 @@
 
 import { cn } from "@/lib/cn";
 import { addMonths, currentMonthKey, isCurrentMonth, monthLabel } from "@/lib/date";
+import { useThemeColors } from "@/lib/theme";
 import * as Haptics from "expo-haptics";
 import { CaretLeftIcon, CaretRightIcon } from "phosphor-react-native";
 import React from "react";
@@ -27,6 +28,7 @@ export function MonthSwitcher({
   className,
   inverted = false,
 }: MonthSwitcherProps) {
+  const colors = useThemeColors();
   const atCurrent = isCurrentMonth(monthKey);
 
   const step = (delta: number) => {
@@ -36,7 +38,7 @@ export function MonthSwitcher({
     onChange(next);
   };
 
-  const arrowColor = inverted ? "#ffffff" : "#1e3a5f";
+  const arrowColor = inverted ? "#ffffff" : colors.brand;
 
   return (
     <View className={cn("flex-row items-center gap-1", className)}>

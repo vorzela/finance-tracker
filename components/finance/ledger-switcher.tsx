@@ -10,6 +10,7 @@ import { Sheet, SheetOption } from "@/components/ui/sheet";
 import { AvatarStack } from "@/components/ui/avatar";
 import { cn } from "@/lib/cn";
 import { useScope } from "@/lib/scope";
+import { useThemeColors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import {
   CaretDownIcon,
@@ -25,9 +26,11 @@ import { PERSONAL_SCOPE } from "@/types/finance";
 export function LedgerSwitcher({ inverted = false }: { inverted?: boolean }) {
   const { scope, setScope, groups, activeGroup } = useScope();
   const router = useRouter();
+  const colors = useThemeColors();
   const [open, setOpen] = useState(false);
 
   const label = scope.kind === "personal" ? "Personal" : (activeGroup?.name ?? "Shared");
+  const iconColor = inverted ? "#ffffff" : colors.brand;
 
   return (
     <>
@@ -39,9 +42,9 @@ export function LedgerSwitcher({ inverted = false }: { inverted?: boolean }) {
         )}
       >
         {scope.kind === "personal" ? (
-          <UserIcon size={14} color={inverted ? "#ffffff" : "#1e3a5f"} weight="bold" />
+          <UserIcon size={14} color={iconColor} weight="bold" />
         ) : (
-          <UsersIcon size={14} color={inverted ? "#ffffff" : "#1e3a5f"} weight="bold" />
+          <UsersIcon size={14} color={iconColor} weight="bold" />
         )}
         <Text
           className={cn(
@@ -66,8 +69,11 @@ export function LedgerSwitcher({ inverted = false }: { inverted?: boolean }) {
           description="Only you can see this"
           selected={scope.kind === "personal"}
           leading={
-            <View className="h-10 w-10 items-center justify-center rounded-2xl bg-navy-50">
-              <UserIcon size={20} color="#1e3a5f" weight="duotone" />
+            <View
+              className="h-10 w-10 items-center justify-center rounded-2xl"
+              style={{ backgroundColor: colors.brandSoft }}
+            >
+              <UserIcon size={20} color={colors.brand} weight="duotone" />
             </View>
           }
           onPress={() => {

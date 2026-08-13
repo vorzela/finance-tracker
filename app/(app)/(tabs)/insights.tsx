@@ -3,6 +3,7 @@
  *
  * The longer view: six months of trend, the full category ranking, how the two
  * of you compare, and the handful of purchases that moved the needle.
+ * Also exports a PDF you can share with an AI for save/cut advice.
  */
 
 import { CategoryBadge } from "@/components/finance/category-icon";
@@ -11,10 +12,12 @@ import { LedgerSwitcher } from "@/components/finance/ledger-switcher";
 import { Money } from "@/components/finance/money";
 import { MonthSwitcher } from "@/components/finance/month-switcher";
 import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Card, Section } from "@/components/ui/card";
 import { ProgressBar } from "@/components/ui/progress";
 import {
   EmptyState,
+  ErrorNote,
   Header,
   LoadingState,
   Screen,
@@ -24,6 +27,7 @@ import { TAB_BAR_HEIGHT } from "@/components/ui/tab-bar";
 import { monthlyHistory } from "@/lib/analytics";
 import { formatMoney } from "@/lib/currency";
 import { monthProgress, shortDayLabel, shortMonthLabel, shortWhenLabel } from "@/lib/date";
+import { getErrorMessage } from "@/lib/error";
 import { useMonth } from "@/lib/month";
 import {
   useCurrency,
@@ -31,10 +35,11 @@ import {
   useMonthOverview,
   useTransactionViews,
 } from "@/lib/queries";
+import { shareMonthReportPdf } from "@/lib/report";
 import { useScope } from "@/lib/scope";
 import { useRouter } from "expo-router";
-import { ChartPieSliceIcon } from "phosphor-react-native";
-import React, { useMemo } from "react";
+import { ChartPieSliceIcon, FilePdfIcon } from "phosphor-react-native";
+import React, { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 export default function Insights() {
@@ -42,6 +47,8 @@ export default function Insights() {
   const { scope } = useScope();
   const currency = useCurrency();
   const router = useRouter();
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const { overview, rows, isLoading, isRefetching, refetch } = useMonthOverview(monthKey);
   const history = useHistory(monthKey);
@@ -71,6 +78,25 @@ export default function Insights() {
     );
   }, [overview?.days]);
 
+  const exportPdf = async () => {
+    if (!overview) return;
+    setExportError(null);
+    setExporting(true);
+    try {
+      await shareMonthReportPdf({
+        monthKey,
+        currency,
+        overview,
+        rows,
+        scopeLabel: isShared ? "Household" : "Personal",
+      });
+    } catch (cause) {
+      setExportError(getErrorMessage(cause, "Couldn't create the PDF"));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   if (isLoading && !overview) {
     return (
       <Screen>
@@ -98,7 +124,24 @@ export default function Insights() {
       >
         <MonthSwitcher monthKey={monthKey} onChange={setMonthKey} className="justify-center" />
 
-        {/* ── Trend ────────────────────────────────────────────────────── */}
+        {exportError ? <ErrorNote message={exportError} /> : null}
+
+        <Card className="gap-3">
+          <Text className="text-sm leading-5 text-muted">
+            Print or share a PDF of this month — handy to paste into ChatGPT / Claude for
+            advice on where to save and what to cut.
+          </Text>
+          <Button
+            variant="secondary"
+            loading={exporting}
+            disabled={!overview}
+            onPress={() => void exportPdf()}
+            icon={<FilePdfIcon size={18} color="#1e3a5f" weight="bold" />}
+          >
+            Share PDF report
+          </Button>
+        </Card>
+
         <Section title="Last 6 months">
           <Card>
             <MonthBars points={months} currency={currency} activeMonthKey={monthKey} />
@@ -109,7 +152,6 @@ export default function Insights() {
           </Card>
         </Section>
 
-        {/* ── Categories ───────────────────────────────────────────────── */}
         <Section title="Categories">
           {(overview?.categories.length ?? 0) === 0 ? (
             <Card>
@@ -147,7 +189,6 @@ export default function Insights() {
           )}
         </Section>
 
-        {/* ── Per person ───────────────────────────────────────────────── */}
         {isShared && (overview?.members.length ?? 0) > 1 ? (
           <Section title="Side by side">
             <Card className="gap-4">
@@ -179,7 +220,6 @@ export default function Insights() {
           </Section>
         ) : null}
 
-        {/* ── Highlights ───────────────────────────────────────────────── */}
         {busiestDay && busiestDay.spent > 0 ? (
           <Section title="Highlights">
             <Card className="flex-row gap-3">
@@ -197,7 +237,6 @@ export default function Insights() {
           </Section>
         ) : null}
 
-        {/* ── Biggest expenses ─────────────────────────────────────────── */}
         {biggest.length > 0 ? (
           <Section title="Biggest expenses">
             <Card flush>

@@ -73,7 +73,8 @@ create table if not exists public.accounts (
   name            text        not null,
   type            text        not null default 'cash'
                   check (type in ('cash', 'bank', 'mobile', 'card')),
-  opening_balance bigint      not null default 0,
+  opening_balance bigint      not null default 0
+                  check (opening_balance >= 0),
   color           text        not null default '#2a5298',
   archived        boolean     not null default false,
   created_at      timestamptz not null default now(),

@@ -7,6 +7,7 @@
  */
 
 import { cn } from "@/lib/cn";
+import { useThemeColors } from "@/lib/theme";
 import { CheckIcon } from "phosphor-react-native";
 import React from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
@@ -89,6 +90,8 @@ export function SheetOption({
   selected = false,
   onPress,
 }: SheetOptionProps) {
+  const colors = useThemeColors();
+
   return (
     <Pressable
       onPress={onPress}
@@ -96,6 +99,7 @@ export function SheetOption({
         "mb-1 flex-row items-center gap-3 rounded-2xl px-3 py-3",
         selected ? "bg-navy-50" : "active:bg-gray-50",
       )}
+      style={selected ? { backgroundColor: colors.brandSoft } : undefined}
     >
       {leading}
 
@@ -103,8 +107,9 @@ export function SheetOption({
         <Text
           className={cn(
             "text-base tracking-tight",
-            selected ? "font-bold text-navy-600" : "font-medium text-gray-900",
+            selected ? "font-bold" : "font-medium text-gray-900",
           )}
+          style={selected ? { color: colors.brand } : undefined}
           numberOfLines={1}
         >
           {label}
@@ -117,7 +122,7 @@ export function SheetOption({
       </View>
 
       {trailing}
-      {selected && <CheckIcon size={20} color="#1e3a5f" weight="bold" />}
+      {selected ? <CheckIcon size={20} color={colors.brand} weight="bold" /> : null}
     </Pressable>
   );
 }

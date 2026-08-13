@@ -1,78 +1,12 @@
 /**
  * components/ui/button.tsx
  *
- * Premium, Apple-inspired button component with smooth animations, haptic feedback,
- * and advanced gesture support using React Native Reanimated.
- *
- * Features:
- * - 5 color variants: primary (navy), secondary, ghost, danger (red), success (green)
- * - 3 sizes: sm (h-10), md (h-12), lg (h-14)
- * - 2 modes: solid (filled) and outline
- * - Smooth 100ms opacity fade-on-press using Reanimated (runs on UI thread)
- * - Configurable haptic feedback: light, medium, heavy, or none
- * - Double-tap detection with 300ms debounce window
- * - Long-press support with heavy haptics
- * - Loading state with animated ActivityIndicator
- * - Icon support (leading and trailing)
- * - Automatic disabled state during loading
- * - Full ref forwarding support
- *
- * Usage Examples:
- *
- * Basic primary button:
- *   <Button onPress={() => alert('Pressed!')}>
- *     Click me
- *   </Button>
- *
- * Outline variant with icon:
- *   <Button variant="secondary" outline icon={<EditIcon size={20} />}>
- *     Edit Profile
- *   </Button>
- *
- * Danger button with loading state:
- *   <Button
- *     variant="danger"
- *     loading={isDeleting}
- *     onPress={() => handleDelete()}
- *   >
- *     Delete Account
- *   </Button>
- *
- * Success button with trailing icon:
- *   <Button
- *     variant="success"
- *     size="lg"
- *     trailingIcon={<CheckIcon size={20} color="#fff" />}
- *   >
- *     Confirm
- *   </Button>
- *
- * Button with double-tap and long-press:
- *   <Button
- *     haptic="medium"
- *     onPress={() => console.log('Single tap')}
- *     onDoublePress={() => console.log('Double tap')}
- *     onLongPress={() => console.log('Long press')}
- *   >
- *     Multi-gesture
- *   </Button>
- *
- * Ghost variant (minimal styling):
- *   <Button variant="ghost" size="sm">
- *     Dismiss
- *   </Button>
- *
- * Custom styling and disabled state:
- *   <Button
- *     disabled={!isReady}
- *     className="border-2 border-dashed"
- *     textClassName="font-bold text-red-600"
- *   >
- *     Submit
- *   </Button>
+ * Primary buttons follow the active accent from Settings → Colour theme
+ * (not a hardcoded navy). Icons on primary/secondary are tinted to match.
  */
 
 import { cn } from "@/lib/cn";
+import { useThemeColors } from "@/lib/theme";
 import * as Haptics from "expo-haptics";
 import React, { forwardRef, useCallback, useEffect, useRef } from "react";
 import {
@@ -103,14 +37,10 @@ export interface ButtonProps extends Omit<
   size?: Size;
   outline?: boolean;
   loading?: boolean;
-  /** Icon element placed before the label */
   icon?: React.ReactNode;
-  /** Icon element placed after the label */
   trailingIcon?: React.ReactNode;
   haptic?: HapticStyle;
-  /** Triggered on long press with medium/heavy haptics */
   onLongPress?: PressableProps["onLongPress"];
-  /** Triggered on rapid successive taps */
   onDoublePress?: () => void;
   style?: ViewStyle;
   children?: React.ReactNode;
@@ -125,19 +55,15 @@ const variantStyles: Record<
     text: string;
     outlineText: string;
     ghostText: string;
-    loadingSolid: string;
-    loadingOutline: string;
   }
 > = {
   primary: {
-    solid: "bg-navy-600",
-    outline: "bg-transparent border border-navy-600",
+    solid: "",
+    outline: "bg-transparent border",
     ghost: "bg-transparent border border-transparent",
     text: "text-white",
-    outlineText: "text-navy-600",
-    ghostText: "text-navy-600",
-    loadingSolid: "#ffffff",
-    loadingOutline: "#1e3a5f", // navy-600
+    outlineText: "text-brand",
+    ghostText: "text-brand",
   },
   secondary: {
     solid: "bg-gray-100",
@@ -146,8 +72,6 @@ const variantStyles: Record<
     text: "text-gray-900",
     outlineText: "text-gray-700",
     ghostText: "text-gray-600",
-    loadingSolid: "#111827", // gray-900
-    loadingOutline: "#374151", // gray-700
   },
   danger: {
     solid: "bg-red-500",
@@ -156,8 +80,6 @@ const variantStyles: Record<
     text: "text-white",
     outlineText: "text-red-500",
     ghostText: "text-red-500",
-    loadingSolid: "#ffffff",
-    loadingOutline: "#e02020", // red-500
   },
   success: {
     solid: "bg-green-500",
@@ -166,8 +88,6 @@ const variantStyles: Record<
     text: "text-white",
     outlineText: "text-green-500",
     ghostText: "text-green-500",
-    loadingSolid: "#ffffff",
-    loadingOutline: "#1f9155", // green-500
   },
   ghost: {
     solid: "bg-transparent",
@@ -176,8 +96,6 @@ const variantStyles: Record<
     text: "text-gray-900",
     outlineText: "text-gray-900",
     ghostText: "text-gray-900",
-    loadingSolid: "#111827",
-    loadingOutline: "#111827",
   },
 };
 
@@ -207,6 +125,13 @@ async function triggerHaptic(style: HapticStyle, isDisabled: boolean) {
   await HAPTIC_MAP[style]().catch(() => {});
 }
 
+function tintIcon(node: React.ReactNode, color: string): React.ReactNode {
+  if (!React.isValidElement(node)) return node;
+  return React.cloneElement(node as React.ReactElement<{ color?: string }>, {
+    color,
+  });
+}
+
 export const Button = forwardRef<View, ButtonProps>(
   (
     {
@@ -231,6 +156,7 @@ export const Button = forwardRef<View, ButtonProps>(
     },
     ref,
   ) => {
+    const colors = useThemeColors();
     const isDisabled = disabled || loading;
     const isGhost = variant === "ghost";
     const pressTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -238,19 +164,14 @@ export const Button = forwardRef<View, ButtonProps>(
     const isDisabledShared = useSharedValue(isDisabled);
     const isPressed = useSharedValue(false);
 
-    // Sync disabled state
     useEffect(() => {
       isDisabledRef.current = isDisabled;
       isDisabledShared.value = isDisabled;
-      // isDisabledShared is a stable Reanimated shared value — intentionally omitted
     }, [isDisabled]);
 
-    // Cleanup on unmount only
     useEffect(() => {
       return () => {
-        if (pressTimeout.current) {
-          clearTimeout(pressTimeout.current);
-        }
+        if (pressTimeout.current) clearTimeout(pressTimeout.current);
       };
     }, []);
 
@@ -265,11 +186,38 @@ export const Button = forwardRef<View, ButtonProps>(
     const textColorStyle = variantStyles[variant][textModeKey];
     const sizeStyle = sizeStyles[size];
 
-    // Map correctly scaled spinner color
+    const brandStyle: ViewStyle | undefined =
+      variant === "primary"
+        ? outline || isGhost
+          ? { borderColor: colors.brand }
+          : { backgroundColor: colors.brand }
+        : undefined;
+
     const loadingColor =
-      isGhost || outline
-        ? variantStyles[variant].loadingOutline
-        : variantStyles[variant].loadingSolid;
+      variant === "primary"
+        ? outline || isGhost
+          ? colors.brand
+          : colors.onBrand
+        : variant === "danger"
+          ? outline || isGhost
+            ? colors.negative
+            : "#ffffff"
+          : variant === "success"
+            ? outline || isGhost
+              ? colors.positive
+              : "#ffffff"
+            : outline || isGhost
+              ? "#374151"
+              : "#111827";
+
+    const iconColor =
+      variant === "primary"
+        ? outline || isGhost
+          ? colors.brand
+          : colors.onBrand
+        : variant === "secondary"
+          ? colors.brand
+          : undefined;
 
     const handlePress = useCallback(
       async (e: Parameters<NonNullable<PressableProps["onPress"]>>[0]) => {
@@ -325,9 +273,7 @@ export const Button = forwardRef<View, ButtonProps>(
     const animatedStyle = useAnimatedStyle(() => ({
       opacity: withTiming(
         isPressed.value && !isDisabledShared.value ? 0.6 : 1,
-        {
-          duration: 100,
-        },
+        { duration: 100 },
       ),
     }));
 
@@ -340,7 +286,7 @@ export const Button = forwardRef<View, ButtonProps>(
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={isDisabled}
-        style={style}
+        style={[brandStyle, style]}
         className={cn(
           "items-center justify-center overflow-hidden flex-row",
           sizeStyle.container,
@@ -355,19 +301,29 @@ export const Button = forwardRef<View, ButtonProps>(
         >
           {loading ? (
             <ActivityIndicator size="small" color={loadingColor} />
+          ) : iconColor ? (
+            tintIcon(icon, iconColor)
           ) : (
             icon
           )}
 
           {typeof children === "string" ? (
-            <Text className={cn(sizeStyle.text, textColorStyle, textClassName)}>
+            <Text
+              className={cn(sizeStyle.text, textColorStyle, textClassName)}
+              style={
+                variant === "primary" && (outline || isGhost)
+                  ? { color: colors.brand }
+                  : undefined
+              }
+            >
               {children}
             </Text>
           ) : (
             children
           )}
 
-          {!loading && trailingIcon}
+          {!loading &&
+            (iconColor ? tintIcon(trailingIcon, iconColor) : trailingIcon)}
         </Animated.View>
       </Pressable>
     );

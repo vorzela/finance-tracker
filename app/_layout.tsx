@@ -10,18 +10,45 @@ import "../global.css";
 
 import {
   DMSans_400Regular,
+  DMSans_400Regular_Italic,
   DMSans_500Medium,
   DMSans_600SemiBold,
   DMSans_700Bold,
 } from "@expo-google-fonts/dm-sans";
 import {
+  Fraunces_400Regular,
+  Fraunces_400Regular_Italic,
+  Fraunces_600SemiBold,
+  Fraunces_700Bold,
+} from "@expo-google-fonts/fraunces";
+import {
+  Literata_400Regular,
+  Literata_400Regular_Italic,
+  Literata_600SemiBold,
+  Literata_700Bold,
+} from "@expo-google-fonts/literata";
+import {
+  Lora_400Regular,
+  Lora_400Regular_Italic,
+  Lora_600SemiBold,
+  Lora_700Bold,
+} from "@expo-google-fonts/lora";
+import {
+  Nunito_400Regular,
+  Nunito_400Regular_Italic,
+  Nunito_600SemiBold,
+  Nunito_700Bold,
+} from "@expo-google-fonts/nunito";
+import {
   SourceSerif4_400Regular,
+  SourceSerif4_400Regular_Italic,
   SourceSerif4_600SemiBold,
   SourceSerif4_700Bold,
 } from "@expo-google-fonts/source-serif-4";
+import { AccentRoot } from "@/components/ui/accent-root";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { ScopeProvider } from "@/lib/scope";
-import { ThemeProvider, useAppearance, useThemeColors } from "@/lib/theme";
+import { fontFamilyName, ThemeProvider, useAppearance, useThemeColors } from "@/lib/theme";
 import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
@@ -63,12 +90,30 @@ function SplashGate({ children }: { children: React.ReactNode }) {
   const { isReady } = useAppearance();
   const [fontsLoaded] = useFonts({
     DMSans_400Regular,
+    DMSans_400Regular_Italic,
     DMSans_500Medium,
     DMSans_600SemiBold,
     DMSans_700Bold,
     SourceSerif4_400Regular,
+    SourceSerif4_400Regular_Italic,
     SourceSerif4_600SemiBold,
     SourceSerif4_700Bold,
+    Nunito_400Regular,
+    Nunito_400Regular_Italic,
+    Nunito_600SemiBold,
+    Nunito_700Bold,
+    Fraunces_400Regular,
+    Fraunces_400Regular_Italic,
+    Fraunces_600SemiBold,
+    Fraunces_700Bold,
+    Lora_400Regular,
+    Lora_400Regular_Italic,
+    Lora_600SemiBold,
+    Lora_700Bold,
+    Literata_400Regular,
+    Literata_400Regular_Italic,
+    Literata_600SemiBold,
+    Literata_700Bold,
   });
 
   useEffect(() => {
@@ -82,9 +127,9 @@ function SplashGate({ children }: { children: React.ReactNode }) {
 }
 
 function RootStack() {
-  const { scheme, font } = useAppearance();
+  const { scheme, font, italic } = useAppearance();
   const colors = useThemeColors();
-  const fontFamily = font === "serif" ? "SourceSerif4_400Regular" : "DMSans_400Regular";
+  const fontFamily = fontFamilyName(font, italic);
 
   useEffect(() => {
     const TextWithDefaults = Text as typeof Text & {
@@ -118,17 +163,19 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <QueryClientProvider client={queryClient}>
-            <AuthProvider>
-              <ScopeProvider>
-                <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
-                  <SplashGate>
-                    <RootStack />
-                  </SplashGate>
-                </KeyboardProvider>
-              </ScopeProvider>
-            </AuthProvider>
-          </QueryClientProvider>
+          <AccentRoot>
+            <QueryClientProvider client={queryClient}>
+              <AuthProvider>
+                <ScopeProvider>
+                  <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
+                    <SplashGate>
+                      <RootStack />
+                    </SplashGate>
+                  </KeyboardProvider>
+                </ScopeProvider>
+              </AuthProvider>
+            </QueryClientProvider>
+          </AccentRoot>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

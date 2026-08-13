@@ -12,6 +12,7 @@ export {
   useTheme,
   useThemeColors,
   colorsFor,
+  fontFamilyName,
   THEME_OPTIONS,
   SCHEME_OPTIONS,
   FONT_OPTIONS,

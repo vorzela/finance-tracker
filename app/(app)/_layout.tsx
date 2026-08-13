@@ -66,6 +66,11 @@ function AppStack() {
         <Stack.Screen name="import-mpesa" />
         <Stack.Screen name="household" />
         <Stack.Screen name="profile" />
+        <Stack.Screen name="help" />
+        <Stack.Screen name="usage" />
+        <Stack.Screen name="faq" />
+        <Stack.Screen name="terms" />
+        <Stack.Screen name="privacy" />
       </Stack>
     </MonthProvider>
   );

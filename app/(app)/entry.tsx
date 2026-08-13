@@ -18,29 +18,45 @@ import { ErrorNote, Header, Screen } from "@/components/ui/screen";
 import { Segmented } from "@/components/ui/segmented";
 import { Sheet, SheetOption } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/auth";
-import { categoriesFor, defaultCategoryFor, getCategory } from "@/lib/categories";
+import { categoriesFor, categoryDetailLabel, categoryDetailPlaceholder, categoryNeedsDetail, composeCategoryNote, defaultCategoryFor, getCategory } from "@/lib/categories";
 import { cn } from "@/lib/cn";
 import { currencySymbol, formatMoney, parseAmount, toAmountInput } from "@/lib/currency";
 import { addDays, isoAt, timeLabel, toDayKey, todayKey, whenLabel } from "@/lib/date";
 import { getErrorMessage } from "@/lib/error";
+import { parseMpesaSms, productHint, productLabel } from "@/lib/mpesa/parse";
+import {
+  accountForPayMethod,
+  getPayMethod,
+  PAY_METHOD_OPTIONS,
+  payMethodFromAccountType,
+  projectedBalance,
+  type PayMethod,
+} from "@/lib/pay-method";
 import {
   useAccounts,
   useCurrency,
   useDeleteTransaction,
   useMembers,
+  useSaveAccount,
   useSaveTransaction,
   useTransaction,
 } from "@/lib/queries";
 import { useScope } from "@/lib/scope";
+import { useThemeColors } from "@/lib/theme";
 import DateTimePicker, {
-  type DateTimePickerEvent,
+  DateTimePickerAndroid,
 } from "@react-native-community/datetimepicker";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   ArrowsLeftRightIcon,
+  BankIcon,
   CalendarBlankIcon,
+  ChatTeardropTextIcon,
   CheckIcon,
+  CreditCardIcon,
+  DeviceMobileIcon,
+  MoneyIcon,
   ReceiptIcon,
   TagIcon,
   TrashIcon,
@@ -71,6 +87,13 @@ function nowDate(): Date {
   return new Date();
 }
 
+function payMethodIcon(method: PayMethod, color: string) {
+  if (method === "cash") return <MoneyIcon size={18} color={color} weight="duotone" />;
+  if (method === "mpesa") return <DeviceMobileIcon size={18} color={color} weight="duotone" />;
+  if (method === "bank") return <BankIcon size={18} color={color} weight="duotone" />;
+  return <CreditCardIcon size={18} color={color} weight="duotone" />;
+}
+
 export default function Entry() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const isEditing = Boolean(id);
@@ -80,19 +103,20 @@ export default function Entry() {
   const { user } = useAuth();
   const { scope } = useScope();
   const currency = useCurrency();
+  const colors = useThemeColors();
 
   const existing = useTransaction(id);
   const { accounts } = useAccounts();
   const { data: members } = useMembers();
   const save = useSaveTransaction();
+  const saveAccount = useSaveAccount();
   const remove = useDeleteTransaction();
 
   const isShared = scope.kind === "group";
-  // Debts are optional on this screen — loading them eagerly crashed some
-  // release builds when the RPC was slow or missing. Link a debt from Debts.
   const openDebts: { id: string; name: string; balance: number }[] = [];
 
   const [kind, setKind] = useState<TransactionKind>("expense");
+  const [payMethod, setPayMethod] = useState<PayMethod>("mpesa");
   const [amountText, setAmountText] = useState("");
   const [feeText, setFeeText] = useState("");
   const [categoryId, setCategoryId] = useState(defaultCategoryFor("expense"));
@@ -102,9 +126,18 @@ export default function Entry() {
   const [memberId, setMemberId] = useState<string | null>(null);
   const [occurredAt, setOccurredAt] = useState(nowDate);
   const [note, setNote] = useState("");
+  const [otherDetail, setOtherDetail] = useState("");
+  const [smsPaste, setSmsPaste] = useState("");
+  const [smsHint, setSmsHint] = useState<string | null>(null);
+  const [openingSetupText, setOpeningSetupText] = useState("");
   const [picker, setPicker] = useState<Picker>("none");
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+
+  const pay = getPayMethod(payMethod);
+  const showFee = kind !== "income" && pay.usesFee;
+  const showSms = !isEditing && kind !== "transfer" && pay.usesSms;
+  const methodAccount = accountForPayMethod(accounts, payMethod);
 
   useEffect(() => {
     if (!isEditing || hydrated || !existing.data) return;
@@ -118,18 +151,32 @@ export default function Entry() {
     setDebtId(row.debt_id);
     setMemberId(row.user_id);
     setOccurredAt(new Date(row.occurred_at));
-    setNote(row.note ?? "");
+    const accountType = accounts.find((account) => account.id === row.account_id)?.type;
+    setPayMethod(payMethodFromAccountType(accountType));
+    if (categoryNeedsDetail(row.category_id) && row.note) {
+      const parts = row.note.split(" · ");
+      setOtherDetail(parts[0] ?? "");
+      setNote(parts.slice(1).join(" · "));
+    } else {
+      setNote(row.note ?? "");
+      setOtherDetail("");
+    }
     setHydrated(true);
-  }, [isEditing, hydrated, existing.data, currency]);
+  }, [isEditing, hydrated, existing.data, currency, accounts]);
 
   useEffect(() => {
-    if (accountId || accounts.length === 0 || (isEditing && !hydrated)) return;
-    setAccountId(accounts[0].id);
-  }, [accountId, accounts, isEditing, hydrated]);
+    if (isEditing && !hydrated) return;
+    if (kind === "transfer") return;
+    if (methodAccount) {
+      if (accountId !== methodAccount.id) setAccountId(methodAccount.id);
+      return;
+    }
+    if (accountId !== null) setAccountId(null);
+  }, [methodAccount, accountId, isEditing, hydrated, kind]);
 
   const categories = useMemo(() => categoriesFor(kind), [kind]);
   const amount = parseAmount(amountText, currency);
-  const feeAmount = feeText ? (parseAmount(feeText, currency) ?? 0) : 0;
+  const feeAmount = showFee && feeText ? (parseAmount(feeText, currency) ?? 0) : 0;
   const activeMemberId = memberId ?? user?.id ?? null;
   const selectedMember = members?.find((member) => member.id === activeMemberId);
   const fromAccount = accounts.find((account) => account.id === accountId);
@@ -137,22 +184,95 @@ export default function Entry() {
   const selectedDebt = openDebts.find((debt) => debt.id === debtId);
   const dayKey = toDayKey(occurredAt);
 
+  const balanceAfter =
+    fromAccount && amount !== null && kind !== "transfer"
+      ? projectedBalance(fromAccount.balance, kind, amount, feeAmount)
+      : null;
+
+  const needsMethodAccount = kind !== "transfer" && !methodAccount;
+
   const canSave =
     amount !== null &&
     amount > 0 &&
     Boolean(activeMemberId) &&
-    (kind !== "transfer" || (accountId !== null && toAccountId !== null && accountId !== toAccountId));
+    !needsMethodAccount &&
+    (kind !== "transfer" || (accountId !== null && toAccountId !== null && accountId !== toAccountId)) &&
+    (kind === "transfer" || Boolean(accountId)) &&
+    (kind === "transfer" || !categoryNeedsDetail(categoryId) || otherDetail.trim().length > 0);
 
   const changeKind = (next: TransactionKind) => {
     setKind(next);
     const stillValid = getCategory(categoryId).applies === next;
-    if (!stillValid) setCategoryId(defaultCategoryFor(next));
+    if (!stillValid) {
+      setCategoryId(defaultCategoryFor(next));
+      setOtherDetail("");
+    }
     if (next !== "expense") setDebtId(null);
+  };
+
+  const changePayMethod = (next: PayMethod) => {
+    setPayMethod(next);
+    const meta = getPayMethod(next);
+    if (!meta.usesFee) {
+      setFeeText("");
+      setSmsPaste("");
+      setSmsHint(null);
+    }
+    setOpeningSetupText("");
+    const match = accountForPayMethod(accounts, next);
+    setAccountId(match?.id ?? null);
+  };
+
+  const createMethodAccount = async () => {
+    if (!user) return;
+    setError(null);
+    const parsedOpening = openingSetupText
+      ? parseAmount(openingSetupText, currency)
+      : 0;
+    if (parsedOpening === null) {
+      setError("Opening balance must be a number.");
+      return;
+    }
+    if (parsedOpening < 0) {
+      setError("Opening balance must be 0 or more.");
+      return;
+    }
+    try {
+      await saveAccount.mutateAsync({
+        draft: {
+          name: pay.defaultName,
+          type: pay.accountType,
+          openingBalance: parsedOpening,
+          color: pay.color,
+        },
+      });
+      setOpeningSetupText("");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => {},
+      );
+    } catch (cause) {
+      setError(getErrorMessage(cause, "Couldn't create the account"));
+    }
   };
 
   const submit = async () => {
     if (!canSave || amount === null || !activeMemberId) return;
     setError(null);
+
+    const finalCategory = kind === "transfer" ? "transfer" : categoryId;
+    if (categoryNeedsDetail(finalCategory) && !otherDetail.trim()) {
+      setError(
+        finalCategory === "street_food"
+          ? "Say what / where — e.g. smokies at stage, chapati, boiled egg."
+          : "Say what “Other” is — e.g. church, chama, school trip.",
+      );
+      return;
+    }
+
+    if (!accountId && kind !== "transfer") {
+      setError(`Create a ${pay.label} account with an opening balance (0 or more) first.`);
+      return;
+    }
 
     try {
       await save.mutateAsync({
@@ -161,11 +281,11 @@ export default function Entry() {
           kind,
           amount,
           feeAmount: feeAmount > 0 ? feeAmount : 0,
-          categoryId: kind === "transfer" ? "transfer" : categoryId,
+          categoryId: finalCategory,
           accountId,
           toAccountId,
           debtId: kind === "expense" ? debtId : null,
-          note: note.trim() ? note.trim() : null,
+          note: composeCategoryNote(finalCategory, otherDetail, note),
           occurredAt: occurredAt.toISOString(),
           userId: activeMemberId,
         },
@@ -197,14 +317,105 @@ export default function Entry() {
     ]);
   };
 
-  const onPickWhen = (event: DateTimePickerEvent, date?: Date) => {
-    if (Platform.OS === "android") setPicker("none");
-    if (event.type === "dismissed" || !date) return;
-    setOccurredAt(date);
+  const openWhenPicker = () => {
+    if (Platform.OS !== "android") {
+      setPicker("when");
+      return;
+    }
+
+    // Imperative API only — the declarative <DateTimePicker> on Android v9
+    // calls dismiss(mode) on unmount and crashes when the picker map misses.
+    DateTimePickerAndroid.open({
+      value: occurredAt,
+      mode: "date",
+      maximumDate: new Date(),
+      onValueChange: (_event, pickedDate) => {
+        const next = new Date(
+          pickedDate.getFullYear(),
+          pickedDate.getMonth(),
+          pickedDate.getDate(),
+          occurredAt.getHours(),
+          occurredAt.getMinutes(),
+          0,
+          0,
+        );
+        setOccurredAt(next);
+        DateTimePickerAndroid.open({
+          value: next,
+          mode: "time",
+          onValueChange: (_timeEvent, pickedTime) => {
+            setOccurredAt(pickedTime);
+          },
+        });
+      },
+    });
+  };
+
+  const closeWhenPicker = () => {
+    setPicker("none");
+  };
+
+  const onIosWhen = (_event: unknown, date?: Date) => {
+    if (date) setOccurredAt(date);
   };
 
   const jumpToDay = (key: string) => {
     setOccurredAt(new Date(isoAt(key, occurredAt.getHours(), occurredAt.getMinutes())));
+  };
+
+  const applySmsPaste = (text: string) => {
+    setSmsPaste(text);
+    setSmsHint(null);
+    setError(null);
+    const parsed = parseMpesaSms(text);
+    if (!parsed) {
+      if (text.trim().length > 20) {
+        setSmsHint("Not recognised as an M-Pesa / Fuliza / M-Shwari / Ziidi / Pochi SMS.");
+      }
+      return;
+    }
+
+    const nextKind: TransactionKind =
+      parsed.kind === "transfer" ? "expense" : parsed.kind;
+    setKind(nextKind);
+    setPayMethod("mpesa");
+    setAmountText(toAmountInput(parsed.amount, currency));
+    setFeeText(
+      parsed.feeAmount > 0 ? toAmountInput(parsed.feeAmount, currency) : "",
+    );
+    setNote(parsed.note);
+    if (parsed.occurredAt) setOccurredAt(new Date(parsed.occurredAt));
+    if (parsed.suggestedCategoryId) {
+      const suggested = getCategory(parsed.suggestedCategoryId);
+      if (suggested.applies === nextKind || nextKind === "expense") {
+        setCategoryId(parsed.suggestedCategoryId);
+      } else {
+        setCategoryId(defaultCategoryFor(nextKind));
+      }
+    } else {
+      setCategoryId(defaultCategoryFor(nextKind));
+    }
+
+    const named = (needle: string) =>
+      accounts.find((account) => account.name.toLowerCase().includes(needle));
+    const mobile =
+      accounts.find((account) => account.type === "mobile") ?? named("mpesa");
+    if (parsed.product === "mshwari") {
+      setAccountId(named("shwari")?.id ?? mobile?.id ?? accountId);
+    } else if (parsed.product === "ziidi") {
+      setAccountId(named("ziidi")?.id ?? named("zidii")?.id ?? mobile?.id ?? accountId);
+    } else if (parsed.product === "pochi") {
+      setAccountId(named("pochi")?.id ?? named("biashara")?.id ?? mobile?.id ?? accountId);
+    } else if (mobile) {
+      setAccountId(mobile.id);
+    }
+
+    setSmsHint(
+      `${productLabel(parsed.product)} filled · ${productHint(parsed.product)}. Pick the category, then save.`,
+    );
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+      () => {},
+    );
   };
 
   return (
@@ -238,13 +449,149 @@ export default function Entry() {
           thumbColor={kind === "income" ? "#d6f0e0" : undefined}
         />
 
+        {kind !== "transfer" ? (
+          <Card className="gap-2">
+            <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+              Paid with
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {PAY_METHOD_OPTIONS.map((option) => {
+                const selected = option.value === payMethod;
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => changePayMethod(option.value)}
+                    className={cn(
+                      "min-w-[46%] flex-1 flex-row items-center gap-2 rounded-2xl border px-3 py-2.5",
+                      selected
+                        ? "border-brand bg-brand-soft"
+                        : "border-hairline bg-subtle active:opacity-80",
+                    )}
+                  >
+                    {payMethodIcon(option.value, selected ? colors.brand : "#6b7280")}
+                    <View className="flex-1">
+                      <Text
+                        className={cn(
+                          "text-sm font-semibold",
+                          selected ? "text-brand" : "text-ink",
+                        )}
+                      >
+                        {option.label}
+                      </Text>
+                      <Text className="text-[10px] leading-4 text-muted" numberOfLines={2}>
+                        {option.hint}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Card>
+        ) : null}
+
+        {needsMethodAccount ? (
+          <Card className="gap-3">
+            <Text className="text-base font-semibold text-ink">
+              Set up {pay.label} first
+            </Text>
+            <Text className="text-sm leading-5 text-muted">
+              Every method needs its own account with an opening balance of at least{" "}
+              {currencySymbol(currency)}0. After that, spending counts from that balance
+              (it can go negative).
+            </Text>
+            <Input
+              label="Opening balance"
+              placeholder="0"
+              value={openingSetupText}
+              onChangeText={setOpeningSetupText}
+              keyboardType="decimal-pad"
+              leadingNode={
+                <Text className="text-base font-bold text-faint">
+                  {currencySymbol(currency)}
+                </Text>
+              }
+              hint="Use 0 if the wallet is empty right now."
+            />
+            <Button
+              loading={saveAccount.isPending}
+              onPress={() => void createMethodAccount()}
+            >
+              Create {pay.defaultName} account
+            </Button>
+          </Card>
+        ) : fromAccount && kind !== "transfer" ? (
+          <Card className="gap-1">
+            <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+              {fromAccount.name} balance
+            </Text>
+            <View className="flex-row items-baseline justify-between gap-3">
+              <Text className="text-sm text-muted">
+                Now{" "}
+                <Text
+                  className={
+                    fromAccount.balance < 0
+                      ? "font-semibold text-negative"
+                      : "font-semibold text-ink"
+                  }
+                >
+                  {formatMoney(fromAccount.balance, currency)}
+                </Text>
+                <Text className="text-faint">
+                  {" "}
+                  · opened {formatMoney(fromAccount.opening_balance, currency)}
+                </Text>
+              </Text>
+              {balanceAfter !== null ? (
+                <Text
+                  className={
+                    balanceAfter < 0
+                      ? "text-sm font-semibold text-negative"
+                      : "text-sm font-semibold text-ink"
+                  }
+                >
+                  After {formatMoney(balanceAfter, currency)}
+                </Text>
+              ) : null}
+            </View>
+          </Card>
+        ) : null}
+
+        {showSms ? (
+          <Card className="gap-3">
+            <View className="flex-row items-center gap-2">
+              <ChatTeardropTextIcon size={18} color="#22a06b" weight="duotone" />
+              <Text className="flex-1 text-sm font-semibold text-ink">
+                Paste {payMethod === "mpesa" ? "M-Pesa" : payMethod === "bank" ? "bank" : "card"}{" "}
+                SMS
+              </Text>
+            </View>
+            <Input
+              label="Confirmation message"
+              placeholder="Paste SMS — amount, fee, code and time fill in"
+              value={smsPaste}
+              onChangeText={applySmsPaste}
+              multiline
+              numberOfLines={4}
+            />
+            {smsHint ? (
+              <Text className="text-xs leading-5 text-brand">{smsHint}</Text>
+            ) : (
+              <Text className="text-xs leading-5 text-muted">
+                Or type the amount below. Transaction cost is read from the SMS when present.
+              </Text>
+            )}
+          </Card>
+        ) : null}
+
         <View className="items-center gap-1 rounded-3xl border border-hairline bg-subtle px-5 py-6">
           <Text className="text-xs font-bold uppercase tracking-widest text-faint">
             {kind === "income"
               ? "Amount received"
               : kind === "transfer"
                 ? "Amount moved"
-                : "Amount spent"}
+                : payMethod === "cash"
+                  ? "Cash amount"
+                  : "Amount spent"}
           </Text>
 
           <View className="mt-1 flex-row items-center justify-center">
@@ -256,7 +603,7 @@ export default function Entry() {
               onChangeText={setAmountText}
               placeholder="0"
               keyboardType="decimal-pad"
-              autoFocus={!isEditing}
+              autoFocus={!isEditing && payMethod === "cash"}
               wrapClassName="w-auto min-w-[140px] max-w-[240px]"
               className="text-center text-4xl font-bold tracking-tight text-ink"
               selectTextOnFocus
@@ -270,8 +617,7 @@ export default function Entry() {
           )}
         </View>
 
-        {/* Transaction cost is spending — always. */}
-        {kind !== "income" ? (
+        {showFee ? (
           <Card>
             <View className="flex-row items-center gap-3">
               <IconTile color="#6b7280">
@@ -280,7 +626,7 @@ export default function Entry() {
               <View className="flex-1">
                 <Text className="text-base font-semibold text-ink">Transaction fee</Text>
                 <Text className="text-sm text-muted">
-                  M-Pesa or bank charge. Counted as spending.
+                  M-Pesa, bank or card charge. Counted as spending.
                 </Text>
               </View>
               <View className="w-28">
@@ -302,6 +648,10 @@ export default function Entry() {
               </Text>
             ) : null}
           </Card>
+        ) : payMethod === "cash" && kind !== "income" && kind !== "transfer" ? (
+          <Text className="px-1 text-xs text-muted">
+            Cash has no transaction cost — just the amount.
+          </Text>
         ) : null}
 
         <Card flush>
@@ -335,7 +685,11 @@ export default function Entry() {
               <Row
                 leading={<CategoryBadge categoryId={categoryId} />}
                 title="Category"
-                subtitle={getCategory(categoryId).label}
+                subtitle={
+                  categoryNeedsDetail(categoryId) && otherDetail.trim()
+                    ? otherDetail.trim()
+                    : getCategory(categoryId).label
+                }
                 chevron
                 onPress={() => setPicker("category")}
               />
@@ -409,7 +763,7 @@ export default function Entry() {
             subtitle={whenLabel(occurredAt.toISOString())}
             chevron
             last
-            onPress={() => setPicker("when")}
+            onPress={openWhenPicker}
           />
         </Card>
 
@@ -441,9 +795,20 @@ export default function Entry() {
           ))}
         </View>
 
+        {kind !== "transfer" && categoryNeedsDetail(categoryId) ? (
+          <Input
+            label={categoryDetailLabel(categoryId)}
+            placeholder={categoryDetailPlaceholder(categoryId)}
+            value={otherDetail}
+            onChangeText={setOtherDetail}
+            required
+            maxLength={80}
+          />
+        ) : null}
+
         <Input
           label="Note"
-          placeholder={kind === "income" ? "Salary, gift, refund…" : "What was it for?"}
+          placeholder={kind === "income" ? "Salary, gift, refund…" : "Optional detail"}
           value={note}
           onChangeText={setNote}
           maxLength={120}
@@ -490,6 +855,7 @@ export default function Entry() {
             }
             onPress={() => {
               setCategoryId(category.id);
+              if (!categoryNeedsDetail(category.id)) setOtherDetail("");
               setPicker("none");
             }}
           />
@@ -588,23 +954,14 @@ export default function Entry() {
         ))}
       </Sheet>
 
-      {picker === "when" && Platform.OS !== "ios" ? (
-        <DateTimePicker
-          value={occurredAt}
-          mode="datetime"
-          maximumDate={new Date()}
-          onChange={onPickWhen}
-        />
-      ) : null}
-
       {Platform.OS === "ios" ? (
         <Sheet
           visible={picker === "when"}
-          onClose={() => setPicker("none")}
+          onClose={closeWhenPicker}
           title="When did it happen?"
           subtitle={`Time kept for accountability · ${timeLabel(occurredAt.toISOString())}`}
           footer={
-            <Button variant="secondary" onPress={() => setPicker("none")}>
+            <Button variant="secondary" onPress={closeWhenPicker}>
               Done
             </Button>
           }
@@ -614,7 +971,7 @@ export default function Entry() {
             mode="datetime"
             maximumDate={new Date()}
             display="spinner"
-            onChange={onPickWhen}
+            onValueChange={onIosWhen}
           />
         </Sheet>
       ) : null}

@@ -7,6 +7,7 @@
  */
 
 import { cn } from "@/lib/cn";
+import { useThemeColors } from "@/lib/theme";
 import React, { useEffect } from "react";
 import { View } from "react-native";
 import Animated, {
@@ -27,11 +28,13 @@ export interface ProgressBarProps {
 
 export function ProgressBar({
   ratio,
-  color = "#1e3a5f",
+  color,
   height = 8,
   trackClassName,
   className,
 }: ProgressBarProps) {
+  const colors = useThemeColors();
+  const fillColor = color ?? colors.brand;
   const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
   const width = useSharedValue(0);
 
@@ -48,7 +51,10 @@ export function ProgressBar({
       className={cn("overflow-hidden rounded-full bg-gray-100", trackClassName, className)}
       style={{ height }}
     >
-      <Animated.View style={[fillStyle, { backgroundColor: color, height }]} className="rounded-full" />
+      <Animated.View
+        style={[fillStyle, { backgroundColor: fillColor, height }]}
+        className="rounded-full"
+      />
     </View>
   );
 }

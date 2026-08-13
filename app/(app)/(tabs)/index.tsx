@@ -201,7 +201,7 @@ export default function Home() {
         {rows.length === 0 ? (
           <Card>
             <EmptyState
-              icon={<WalletIcon size={28} color="#1e3a5f" weight="duotone" />}
+              icon={<WalletIcon size={28} color={colors.brand} weight="duotone" />}
               title="No spending logged"
               message={
                 isShared

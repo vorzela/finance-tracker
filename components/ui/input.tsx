@@ -7,13 +7,14 @@
  */
 
 import { cn } from "@/lib/cn";
+import { useThemeColors } from "@/lib/theme";
 import {
     CheckCircleIcon,
     EyeIcon,
     EyeSlashIcon,
     WarningCircleIcon,
 } from "phosphor-react-native";
-import React, { forwardRef, useEffect, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import {
     Pressable,
     Text,
@@ -27,14 +28,6 @@ import Animated, {
     useSharedValue,
     withTiming,
 } from "react-native-reanimated";
-
-// ── Color tokens (must match global.css) ─────────────────────────────────────
-const C = {
-  default: "#6b7280",  // gray-500
-  focused: "#1e3a5f",  // navy-600
-  success: "#166b3f",  // green-600
-  error:   "#e02020",  // red-500
-} as const;
 
 // Maps discrete state to a number on a shared animation range [0, 3]
 function colorMode(
@@ -70,6 +63,29 @@ export interface InputProps extends TextInputProps {
   wrapClassName?: string;
 }
 
+/**
+ * NativeWind v5 / react-native-css crashes TextInput when `text-center|left|right`
+ * land in className (`path.split` on a boolean mapping). Strip those utilities and
+ * apply textAlign via style instead.
+ */
+const TEXT_ALIGN_RE = /\btext-(left|center|right|justify)\b/g;
+
+function splitTextAlignClass(className?: string): {
+  className?: string;
+  textAlign?: "left" | "center" | "right" | "justify";
+} {
+  if (!className) return {};
+  let textAlign: "left" | "center" | "right" | "justify" | undefined;
+  const cleaned = className
+    .replace(TEXT_ALIGN_RE, (match, align: string) => {
+      textAlign = align as "left" | "center" | "right" | "justify";
+      return "";
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+  return { className: cleaned || undefined, textAlign };
+}
+
 export const Input = forwardRef<TextInput, InputProps>(
   (
     {
@@ -82,6 +98,7 @@ export const Input = forwardRef<TextInput, InputProps>(
       trailingNode,
       wrapClassName,
       className,
+      style,
       onFocus,
       onBlur,
       onChangeText,
@@ -92,7 +109,20 @@ export const Input = forwardRef<TextInput, InputProps>(
     },
     ref,
   ) => {
+    const colors = useThemeColors();
+    const palette = useMemo(
+      () =>
+        [
+          colors.muted,
+          colors.brand,
+          colors.positive,
+          colors.negative,
+        ] as const,
+      [colors.muted, colors.brand, colors.positive, colors.negative],
+    );
+
     const [isFocused, setIsFocused] = useState(false);
+    const { className: safeClassName, textAlign } = splitTextAlignClass(className);
 
     // Track internal value so uncontrolled inputs still animate the label correctly
     const [internalValue, setInternalValue] = useState(defaultValue ?? "");
@@ -137,7 +167,7 @@ export const Input = forwardRef<TextInput, InputProps>(
       color: interpolateColor(
         cm.value,
         [0, 1, 2, 3],
-        [C.default, C.focused, C.success, C.error],
+        [palette[0], palette[1], palette[2], palette[3]],
       ),
     }));
 
@@ -165,6 +195,11 @@ export const Input = forwardRef<TextInput, InputProps>(
             "flex-row items-center rounded-2xl border px-4 min-h-15",
             getBorderClasses(error, success, isFocused),
           )}
+          style={
+            isFocused && !error && !success
+              ? { borderColor: colors.brand }
+              : undefined
+          }
         >
           {leadingNode && <View className="mr-3">{leadingNode}</View>}
 
@@ -181,8 +216,9 @@ export const Input = forwardRef<TextInput, InputProps>(
               className={cn(
                 "text-base text-gray-900 p-0 m-0",
                 label && "mt-0.5",
-                className,
+                safeClassName,
               )}
+              style={[textAlign ? { textAlign } : null, style]}
               placeholderTextColor="#9ca3af"
               onFocus={handleFocus}
               onBlur={handleBlur}

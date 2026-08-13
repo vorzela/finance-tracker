@@ -1,19 +1,24 @@
 /**
  * lib/mpesa/sms.ts
  *
- * Android-only helpers: ask for SMS permission and list recent M-Pesa messages.
- * Wrapped so a missing native module (Expo Go / iOS) never crashes the app.
+ * Android-only helpers: ask for SMS permission and list recent wallet SMS.
+ * Results are deduped by M-Pesa confirmation code (Fuliza sends two SMS).
  */
 
 import { PermissionsAndroid, Platform } from "react-native";
-import { parseMpesaSms, type ParsedMpesa } from "@/lib/mpesa/parse";
+import {
+  dedupeByMpesaCode,
+  parseMpesaSms,
+  type ParsedMpesa,
+} from "@/lib/mpesa/parse";
 
 export interface SmsMessage {
+  /** Stable list key — the M-Pesa code when present. */
   id: string;
   address: string;
   body: string;
   date: number;
-  parsed: ParsedMpesa | null;
+  parsed: ParsedMpesa;
 }
 
 type SmsAndroidModule = {
@@ -48,9 +53,7 @@ export async function requestSmsPermission(): Promise<boolean> {
 
   return (
     granted[PermissionsAndroid.PERMISSIONS.READ_SMS] ===
-      PermissionsAndroid.RESULTS.GRANTED &&
-    granted[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] ===
-      PermissionsAndroid.RESULTS.GRANTED
+    PermissionsAndroid.RESULTS.GRANTED
   );
 }
 
@@ -60,8 +63,9 @@ export async function hasSmsPermission(): Promise<boolean> {
 }
 
 /**
- * Lists recent inbox SMS that look like M-Pesa, newest first.
- * Resolves to [] when permission is missing or the native module is absent.
+ * Lists recent inbox SMS for M-Pesa / Fuliza / M-Shwari / Ziidi / Pochi, one
+ * row per confirmation code. Resolves to [] when permission or the native
+ * module is missing — the UI then falls back to paste / manual entry.
  */
 export function listMpesaSms(limit = 40): Promise<SmsMessage[]> {
   const SmsAndroid = getSmsAndroid();
@@ -69,7 +73,7 @@ export function listMpesaSms(limit = 40): Promise<SmsMessage[]> {
 
   const filter = JSON.stringify({
     box: "inbox",
-    maxCount: Math.max(limit * 3, 60),
+    maxCount: Math.max(limit * 4, 80),
     indexFrom: 0,
   });
 
@@ -86,30 +90,53 @@ export function listMpesaSms(limit = 40): Promise<SmsMessage[]> {
             date?: string | number;
           }[];
 
-          const mapped = rows
+          const parsedRows = rows
             .map((row) => {
               const body = row.body ?? "";
               const parsed = parseMpesaSms(body);
+              if (!parsed) return null;
               return {
-                id: String(row._id ?? `${row.date}-${body.slice(0, 12)}`),
                 address: row.address ?? "",
                 body,
                 date: Number(row.date) || Date.now(),
                 parsed,
-              } satisfies SmsMessage;
+              };
             })
+            .filter((row): row is NonNullable<typeof row> => row !== null)
             .filter((row) => {
               const addr = row.address.toUpperCase();
               return (
-                row.parsed !== null ||
                 addr.includes("MPESA") ||
-                /m-?pesa/i.test(row.body)
+                addr.includes("SAFARICOM") ||
+                /m-?pesa|fuliza|m-?shwari|ziidi|zidii|pochi|biashara/i.test(row.body)
               );
-            })
-            .filter((row) => row.parsed !== null)
-            .slice(0, limit);
+            });
 
-          resolve(mapped);
+          const unique = dedupeByMpesaCode(parsedRows.map((row) => row.parsed)).slice(
+            0,
+            limit,
+          );
+
+          resolve(
+            unique.map((parsed) => {
+              // Prefer the winning SMS body (after Fuliza code-dedupe), not an
+              // arbitrary sibling that shared the same confirmation code.
+              const source =
+                parsedRows.find((row) => row.parsed.raw === parsed.raw) ??
+                parsedRows.find(
+                  (row) =>
+                    parsed.reference != null &&
+                    row.parsed.reference === parsed.reference,
+                );
+              return {
+                id: parsed.reference ?? `body-${parsed.raw.slice(0, 24)}`,
+                address: source?.address ?? "MPESA",
+                body: parsed.raw,
+                date: source?.date ?? Date.now(),
+                parsed,
+              } satisfies SmsMessage;
+            }),
+          );
         } catch {
           resolve([]);
         }

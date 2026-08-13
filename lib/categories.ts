@@ -37,6 +37,7 @@ export type CategoryIcon =
   | "refund"
   | "transfer"
   | "cash"
+  | "snack"
   | "tag";
 
 export interface Category {
@@ -52,6 +53,13 @@ export const CATEGORIES: Category[] = [
   // ── Expenses ──────────────────────────────────────────────────────────────
   { id: "groceries", label: "Groceries", icon: "basket", color: "#3db077", applies: "expense" },
   { id: "dining", label: "Eating out", icon: "fork", color: "#f59e0b", applies: "expense" },
+  {
+    id: "street_food",
+    label: "Street food & snacks",
+    icon: "snack",
+    color: "#ea580c",
+    applies: "expense",
+  },
   { id: "transport", label: "Transport", icon: "bus", color: "#5480bf", applies: "expense" },
   { id: "fuel", label: "Fuel", icon: "fuel", color: "#1e3a5f", applies: "expense" },
   { id: "airtime", label: "Airtime & data", icon: "phone", color: "#22a06b", applies: "expense" },
@@ -66,18 +74,18 @@ export const CATEGORIES: Category[] = [
   { id: "personal", label: "Personal care", icon: "person", color: "#14b8a6", applies: "expense" },
   { id: "household", label: "Household goods", icon: "tools", color: "#a16207", applies: "expense" },
   { id: "savings", label: "Savings & chama", icon: "piggy", color: "#166b3f", applies: "expense" },
-  { id: "loan", label: "Loan repayment", icon: "coins", color: "#9b0c0c", applies: "expense" },
+  { id: "loan", label: "Loan / Fuliza", icon: "coins", color: "#9b0c0c", applies: "expense" },
   { id: "fees", label: "Transaction fees", icon: "receipt", color: "#6b7280", applies: "expense" },
   { id: "cash", label: "Cash withdrawal", icon: "cash", color: "#4b5563", applies: "expense" },
   { id: "gifts", label: "Gifts & giving", icon: "gift", color: "#fb7185", applies: "expense" },
-  { id: "other", label: "Other", icon: "tag", color: "#9ca3af", applies: "expense" },
+  { id: "other", label: "Other (specify)", icon: "tag", color: "#9ca3af", applies: "expense" },
 
   // ── Income ────────────────────────────────────────────────────────────────
   { id: "salary", label: "Salary", icon: "briefcase", color: "#1f9155", applies: "income" },
-  { id: "business", label: "Business", icon: "store", color: "#2a5298", applies: "income" },
+  { id: "business", label: "Business / Pochi", icon: "store", color: "#2a5298", applies: "income" },
   { id: "refund", label: "Refund", icon: "refund", color: "#0d9488", applies: "income" },
   { id: "gift_in", label: "Money received", icon: "gift", color: "#65a30d", applies: "income" },
-  { id: "other_income", label: "Other income", icon: "coins", color: "#84cc16", applies: "income" },
+  { id: "other_income", label: "Other income (specify)", icon: "coins", color: "#84cc16", applies: "income" },
 
   // ── Transfers ─────────────────────────────────────────────────────────────
   { id: "transfer", label: "Transfer", icon: "transfer", color: "#64748b", applies: "transfer" },
@@ -113,6 +121,43 @@ export function defaultCategoryFor(kind: TransactionKind): string {
   if (kind === "income") return "salary";
   if (kind === "transfer") return TRANSFER_CATEGORY_ID;
   return "groceries";
+}
+
+/** Categories that need a free-text “what / where” from the user. */
+export function categoryNeedsDetail(categoryId: string): boolean {
+  return (
+    categoryId === "other" ||
+    categoryId === "other_income" ||
+    categoryId === "street_food"
+  );
+}
+
+export function categoryDetailLabel(categoryId: string): string {
+  if (categoryId === "street_food") return "What / where?";
+  return "What is it?";
+}
+
+export function categoryDetailPlaceholder(categoryId: string): string {
+  if (categoryId === "street_food") {
+    return "e.g. Smokies at stage, chapati CBD, boiled egg snacks";
+  }
+  if (categoryId === "other_income") return "e.g. Side hustle, refund from…";
+  return "e.g. Church offering, chama, school trip";
+}
+
+/** Prefaces the ledger note with the user's detail text when needed. */
+export function composeCategoryNote(
+  categoryId: string,
+  otherDetail: string,
+  baseNote: string | null | undefined,
+): string | null {
+  const detail = otherDetail.trim();
+  const base = baseNote?.trim() ?? "";
+  if (categoryNeedsDetail(categoryId)) {
+    if (!detail) return null;
+    return base ? `${detail} · ${base}` : detail;
+  }
+  return base || null;
 }
 
 /** Categories a monthly budget can be set on — spending only. */
