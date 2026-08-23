@@ -1,9 +1,10 @@
 /**
  * components/ui/button.tsx
  *
- * Primary buttons follow the active accent from Settings → Colour theme
- * (not a hardcoded navy). Icons on primary/secondary are tinted to match.
+ * Soft, full-bleed controls — filled primary, tonal secondary (Material You).
  */
+
+import { AppText } from "@/components/ui/app-text";
 
 import { cn } from "@/lib/cn";
 import { useThemeColors } from "@/lib/theme";
@@ -12,7 +13,6 @@ import React, { forwardRef, useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  Text,
   View,
   type PressableProps,
   type ViewStyle,
@@ -27,10 +27,7 @@ export type Variant = "primary" | "secondary" | "ghost" | "danger" | "success";
 export type Size = "sm" | "md" | "lg";
 export type HapticStyle = "light" | "medium" | "heavy" | "none";
 
-export interface ButtonProps extends Omit<
-  PressableProps,
-  "style" | "className"
-> {
+export interface ButtonProps extends Omit<PressableProps, "style" | "className"> {
   className?: string;
   textClassName?: string;
   variant?: Variant;
@@ -46,71 +43,18 @@ export interface ButtonProps extends Omit<
   children?: React.ReactNode;
 }
 
-const variantStyles: Record<
-  Variant,
-  {
-    solid: string;
-    outline: string;
-    ghost: string;
-    text: string;
-    outlineText: string;
-    ghostText: string;
-  }
-> = {
-  primary: {
-    solid: "",
-    outline: "bg-transparent border",
-    ghost: "bg-transparent border border-transparent",
-    text: "text-white",
-    outlineText: "text-brand",
-    ghostText: "text-brand",
-  },
-  secondary: {
-    solid: "bg-gray-100",
-    outline: "bg-transparent border border-gray-300",
-    ghost: "bg-transparent border border-transparent",
-    text: "text-gray-900",
-    outlineText: "text-gray-700",
-    ghostText: "text-gray-600",
-  },
-  danger: {
-    solid: "bg-red-500",
-    outline: "bg-transparent border border-red-500",
-    ghost: "bg-transparent border border-transparent",
-    text: "text-white",
-    outlineText: "text-red-500",
-    ghostText: "text-red-500",
-  },
-  success: {
-    solid: "bg-green-500",
-    outline: "bg-transparent border border-green-500",
-    ghost: "bg-transparent border border-transparent",
-    text: "text-white",
-    outlineText: "text-green-500",
-    ghostText: "text-green-500",
-  },
-  ghost: {
-    solid: "bg-transparent",
-    outline: "bg-transparent border border-transparent",
-    ghost: "bg-transparent border border-transparent",
-    text: "text-gray-900",
-    outlineText: "text-gray-900",
-    ghostText: "text-gray-900",
-  },
-};
-
 const sizeStyles: Record<Size, { container: string; text: string }> = {
   sm: {
-    container: "h-10 px-4 rounded-xl",
-    text: "text-sm font-semibold tracking-tight",
+    container: "h-10 px-4 rounded-full",
+    text: "text-[14px] font-semibold tracking-tight",
   },
   md: {
-    container: "h-12 px-6 rounded-2xl",
-    text: "text-base font-semibold tracking-tight",
+    container: "h-12 px-6 rounded-full",
+    text: "text-[16px] font-semibold tracking-tight",
   },
   lg: {
-    container: "h-14 px-8 rounded-[18px]",
-    text: "text-lg font-semibold tracking-tight",
+    container: "h-[54px] px-7 rounded-full",
+    text: "text-[17px] font-semibold tracking-tight",
   },
 };
 
@@ -130,6 +74,26 @@ function tintIcon(node: React.ReactNode, color: string): React.ReactNode {
   return React.cloneElement(node as React.ReactElement<{ color?: string }>, {
     color,
   });
+}
+
+function flattenLabel(children: React.ReactNode): string | null {
+  if (children == null || typeof children === "boolean") return null;
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (Array.isArray(children)) {
+    const parts: string[] = [];
+    for (const child of children) {
+      if (child == null || typeof child === "boolean") continue;
+      if (typeof child === "string" || typeof child === "number") {
+        parts.push(String(child));
+        continue;
+      }
+      return null;
+    }
+    return parts.length ? parts.join("") : null;
+  }
+  return null;
 }
 
 export const Button = forwardRef<View, ButtonProps>(
@@ -175,49 +139,63 @@ export const Button = forwardRef<View, ButtonProps>(
       };
     }, []);
 
-    const modeKey = isGhost ? "ghost" : outline ? "outline" : "solid";
-    const textModeKey = isGhost
-      ? "ghostText"
-      : outline
-        ? "outlineText"
-        : "text";
-
-    const containerStyle = variantStyles[variant][modeKey];
-    const textColorStyle = variantStyles[variant][textModeKey];
     const sizeStyle = sizeStyles[size];
 
-    const brandStyle: ViewStyle | undefined =
-      variant === "primary"
-        ? outline || isGhost
-          ? { borderColor: colors.brand }
-          : { backgroundColor: colors.brand }
-        : undefined;
+    const containerStyle: ViewStyle = (() => {
+      if (variant === "primary") {
+        if (outline || isGhost) {
+          return { backgroundColor: "transparent", borderWidth: 1.5, borderColor: colors.brand };
+        }
+        return { backgroundColor: colors.brand };
+      }
+      if (variant === "secondary") {
+        if (outline) {
+          return {
+            backgroundColor: "transparent",
+            borderWidth: 1,
+            borderColor: colors.hairline,
+          };
+        }
+        return { backgroundColor: colors.subtle };
+      }
+      if (variant === "danger") {
+        if (outline || isGhost) {
+          return {
+            backgroundColor: "transparent",
+            borderWidth: outline ? 1.5 : 0,
+            borderColor: colors.negative,
+          };
+        }
+        return { backgroundColor: colors.negative };
+      }
+      if (variant === "success") {
+        if (outline || isGhost) {
+          return {
+            backgroundColor: "transparent",
+            borderWidth: outline ? 1.5 : 0,
+            borderColor: colors.positive,
+          };
+        }
+        return { backgroundColor: colors.positive };
+      }
+      return { backgroundColor: "transparent" };
+    })();
 
-    const loadingColor =
-      variant === "primary"
-        ? outline || isGhost
-          ? colors.brand
-          : colors.onBrand
-        : variant === "danger"
-          ? outline || isGhost
-            ? colors.negative
-            : "#ffffff"
-          : variant === "success"
-            ? outline || isGhost
-              ? colors.positive
-              : "#ffffff"
-            : outline || isGhost
-              ? "#374151"
-              : "#111827";
+    const labelColor = (() => {
+      if (variant === "primary") {
+        return outline || isGhost ? colors.brand : colors.onBrand;
+      }
+      if (variant === "secondary") return colors.ink;
+      if (variant === "danger") {
+        return outline || isGhost ? colors.negative : colors.onBrand;
+      }
+      if (variant === "success") {
+        return outline || isGhost ? colors.positive : colors.onBrand;
+      }
+      return colors.ink;
+    })();
 
-    const iconColor =
-      variant === "primary"
-        ? outline || isGhost
-          ? colors.brand
-          : colors.onBrand
-        : variant === "secondary"
-          ? colors.brand
-          : undefined;
+    const iconColor = labelColor;
 
     const handlePress = useCallback(
       async (e: Parameters<NonNullable<PressableProps["onPress"]>>[0]) => {
@@ -271,11 +249,19 @@ export const Button = forwardRef<View, ButtonProps>(
     );
 
     const animatedStyle = useAnimatedStyle(() => ({
-      opacity: withTiming(
-        isPressed.value && !isDisabledShared.value ? 0.6 : 1,
-        { duration: 100 },
-      ),
+      opacity: withTiming(isPressed.value && !isDisabledShared.value ? 0.72 : 1, {
+        duration: 90,
+      }),
+      transform: [
+        {
+          scale: withTiming(isPressed.value && !isDisabledShared.value ? 0.98 : 1, {
+            duration: 90,
+          }),
+        },
+      ],
     }));
+
+    const label = flattenLabel(children);
 
     return (
       <Pressable
@@ -286,12 +272,11 @@ export const Button = forwardRef<View, ButtonProps>(
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={isDisabled}
-        style={[brandStyle, style]}
+        style={[containerStyle, style]}
         className={cn(
-          "items-center justify-center overflow-hidden flex-row",
+          "will-change-pressable items-center justify-center overflow-hidden flex-row",
           sizeStyle.container,
-          containerStyle,
-          isDisabled && "opacity-60",
+          isDisabled && "opacity-45",
           className,
         )}
       >
@@ -300,30 +285,20 @@ export const Button = forwardRef<View, ButtonProps>(
           className="flex-row items-center justify-center gap-2"
         >
           {loading ? (
-            <ActivityIndicator size="small" color={loadingColor} />
-          ) : iconColor ? (
-            tintIcon(icon, iconColor)
+            <ActivityIndicator size="small" color={labelColor} />
           ) : (
-            icon
+            tintIcon(icon, iconColor)
           )}
 
-          {typeof children === "string" ? (
-            <Text
-              className={cn(sizeStyle.text, textColorStyle, textClassName)}
-              style={
-                variant === "primary" && (outline || isGhost)
-                  ? { color: colors.brand }
-                  : undefined
-              }
-            >
-              {children}
-            </Text>
+          {label !== null ? (
+            <AppText className={cn(sizeStyle.text, textClassName)} style={{ color: labelColor }}>
+              {label}
+            </AppText>
           ) : (
             children
           )}
 
-          {!loading &&
-            (iconColor ? tintIcon(trailingIcon, iconColor) : trailingIcon)}
+          {!loading && tintIcon(trailingIcon, iconColor)}
         </Animated.View>
       </Pressable>
     );

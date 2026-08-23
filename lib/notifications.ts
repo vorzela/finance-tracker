@@ -1,25 +1,41 @@
 /**
  * lib/notifications.ts
  *
- * Local budget alerts. Fires when a category crosses 80% or 100% of its limit.
- * Deduped in AsyncStorage so the same threshold does not spam every refresh.
+ * Local budget alerts and household chat pings. Budget crossings are deduped
+ * in AsyncStorage so the same threshold does not spam every refresh.
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import { savePushToken } from "@/lib/api";
 import type { BudgetStatus } from "@/types/finance";
 import { formatMoney } from "@/lib/currency";
 
 const SEEN_KEY = "duo-wallet.budget-alerts-seen";
 
+/** Group whose chat screen is in the foreground — suppress banners for it. */
+let viewingChatGroupId: string | null = null;
+
+export function setViewingChatGroup(groupId: string | null): void {
+  viewingChatGroupId = groupId;
+}
+
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const groupId = notification.request.content.data?.groupId;
+    const hide =
+      typeof groupId === "string" &&
+      viewingChatGroupId !== null &&
+      groupId === viewingChatGroupId;
+    return {
+      shouldShowBanner: !hide,
+      shouldShowList: true,
+      shouldPlaySound: !hide,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 export async function ensureNotificationPermission(): Promise<boolean> {
@@ -107,4 +123,56 @@ export async function notifyBudgetThresholds(
   }
 
   if (changed) await writeSeen(seen);
+}
+
+async function ensureChatChannel(): Promise<void> {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync("chat", {
+    name: "Household chat",
+    importance: Notifications.AndroidImportance.HIGH,
+  });
+}
+
+/** Banner when a household message arrives and you are not looking at that chat. */
+export async function notifyChatMessage(input: {
+  groupId: string;
+  title: string;
+  body: string;
+}): Promise<void> {
+  if (viewingChatGroupId === input.groupId) return;
+
+  const permitted = await ensureNotificationPermission();
+  if (!permitted) return;
+  await ensureChatChannel();
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: input.title,
+      body: input.body,
+      sound: true,
+      data: { type: "chat", groupId: input.groupId },
+      ...(Platform.OS === "android" ? { channelId: "chat" } : {}),
+    },
+    trigger: null,
+  });
+}
+
+/** Stores this phone's Expo push token so the database can wake it. */
+export async function registerPushToken(userId: string): Promise<void> {
+  const permitted = await ensureNotificationPermission();
+  if (!permitted) return;
+  await ensureChatChannel();
+
+  const projectId =
+    Constants.easConfig?.projectId ??
+    (Constants.expoConfig?.extra?.eas as { projectId?: string } | undefined)?.projectId;
+
+  try {
+    const result = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined,
+    );
+    await savePushToken(userId, result.data, Platform.OS);
+  } catch {
+    // Simulator / missing EAS project: local Realtime banners still work.
+  }
 }

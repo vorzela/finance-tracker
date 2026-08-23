@@ -1,14 +1,15 @@
 /**
  * components/ui/segmented.tsx
  *
- * iOS-style segmented control. The white thumb slides on the UI thread, and the
- * track width comes from `onLayout` so segments always divide evenly.
+ * iOS-style segmented control with a sliding thumb.
  */
 
 import { cn } from "@/lib/cn";
+import { useThemeColors } from "@/lib/theme";
 import * as Haptics from "expo-haptics";
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Pressable, View, type LayoutChangeEvent } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -25,7 +26,6 @@ export interface SegmentedProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   className?: string;
-  /** Tints the thumb, for the expense/income switch. */
   thumbColor?: string;
   size?: "sm" | "md";
 }
@@ -35,9 +35,10 @@ export function Segmented<T extends string>({
   value,
   onChange,
   className,
-  thumbColor = "#ffffff",
+  thumbColor,
   size = "md",
 }: SegmentedProps<T>) {
+  const colors = useThemeColors();
   const [trackWidth, setTrackWidth] = useState(0);
   const offset = useSharedValue(0);
   const index = Math.max(
@@ -45,6 +46,7 @@ export function Segmented<T extends string>({
     options.findIndex((option) => option.value === value),
   );
   const segmentWidth = trackWidth === 0 ? 0 : trackWidth / options.length;
+  const fill = thumbColor ?? colors.surface;
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     setTrackWidth(event.nativeEvent.layout.width);
@@ -55,32 +57,34 @@ export function Segmented<T extends string>({
     transform: [{ translateX: offset.value }],
   }));
 
-  // Driven by the selected index rather than the tap, so the thumb also follows
-  // changes made elsewhere.
   useEffect(() => {
     if (segmentWidth === 0) return;
     const target = segmentWidth * index;
-    if (offset.value === 0 && index === 0) offset.value = 0;
-    else offset.value = withTiming(target, { duration: 180 });
+    offset.value = withTiming(target, { duration: 200 });
   }, [index, segmentWidth, offset]);
-
-  const select = (option: SegmentOption<T>) => {
-    void Haptics.selectionAsync().catch(() => {});
-    onChange(option.value);
-  };
 
   return (
     <View
       onLayout={onLayout}
       className={cn(
-        "relative flex-row rounded-2xl bg-gray-100 p-1",
-        size === "sm" ? "h-10" : "h-12",
+        "relative flex-row rounded-full bg-subtle p-1",
+        size === "sm" ? "h-9" : "h-11",
         className,
       )}
     >
       <Animated.View
-        style={[thumbStyle, { backgroundColor: thumbColor }]}
-        className="absolute bottom-1 left-1 top-1 rounded-xl shadow-sm"
+        style={[
+          thumbStyle,
+          {
+            backgroundColor: fill,
+            shadowColor: colors.chrome,
+            shadowOpacity: 0.08,
+            shadowRadius: 6,
+            shadowOffset: { width: 0, height: 1 },
+            elevation: 2,
+          },
+        ]}
+        className="absolute bottom-1 left-1 top-1 rounded-full"
       />
 
       {options.map((option) => {
@@ -88,18 +92,21 @@ export function Segmented<T extends string>({
         return (
           <Pressable
             key={option.value}
-            onPress={() => select(option)}
-            className="flex-1 items-center justify-center"
+            onPress={() => {
+              void Haptics.selectionAsync().catch(() => {});
+              onChange(option.value);
+            }}
+            className="will-change-pressable flex-1 items-center justify-center"
           >
-            <Text
+            <AppText
               className={cn(
-                "text-sm font-semibold tracking-tight",
-                isActive ? "text-gray-900" : "text-gray-500",
+                "text-[13px] font-semibold tracking-tight",
+                isActive ? "text-ink" : "text-muted",
               )}
               numberOfLines={1}
             >
               {option.label}
-            </Text>
+            </AppText>
           </Pressable>
         );
       })}

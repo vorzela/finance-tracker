@@ -23,12 +23,10 @@ import {
   dayKeyOf,
   daysInMonth,
   monthDayKeys,
-  monthKeyOf,
   monthProgress,
   toDayKey,
   toMonthKey,
 } from "@/lib/date";
-import type { HistoryPoint } from "@/lib/api";
 import type { BudgetRow, TransactionRow } from "@/types/database";
 import type {
   BudgetHealth,
@@ -176,9 +174,9 @@ export function dailySpend(
   });
 }
 
-/** Spend and income per month across a window, oldest first. */
-export function monthlyHistory(
-  points: HistoryPoint[],
+/** Spend and income per month across a window, oldest first. Fills gaps with zeros. */
+export function fillMonthHistory(
+  points: Pick<MonthPoint, "monthKey" | "spent" | "earned">[],
   monthKey: string,
   months: number,
 ): MonthPoint[] {
@@ -192,11 +190,10 @@ export function monthlyHistory(
   }
 
   for (const point of points) {
-    const bucket = buckets.get(monthKeyOf(point.occurred_at));
+    const bucket = buckets.get(point.monthKey);
     if (!bucket) continue;
-    bucket.spent += point.fee_amount;
-    if (point.kind === "expense") bucket.spent += point.amount;
-    else if (point.kind === "income") bucket.earned += point.amount;
+    bucket.spent = point.spent;
+    bucket.earned = point.earned;
   }
 
   return [...buckets.values()];
@@ -274,7 +271,7 @@ export function projectSpend(monthKey: string, spent: number): number {
 export interface OverviewInput {
   monthKey: string;
   rows: TransactionRow[];
-  previousRows: HistoryPoint[];
+  previousSpent: number;
   members: Member[];
   budgets: BudgetRow[];
 }
@@ -283,12 +280,11 @@ export interface OverviewInput {
 export function buildOverview({
   monthKey,
   rows,
-  previousRows,
+  previousSpent,
   members,
   budgets,
 }: OverviewInput): MonthOverview {
   const totals = rows.length === 0 ? EMPTY_TOTALS : computeTotals(rows);
-  const previousSpent = computeTotals(previousRows).spent;
   const statuses = budgetStatuses(budgets, rows, monthKey);
 
   return {
@@ -330,6 +326,27 @@ export function coupleBalance(
     openingTotal: perMember.reduce((sum, entry) => sum + entry.openingBalance, 0),
     perMember: [...perMember].sort((a, b) => b.balance - a.balance),
   };
+}
+
+/** Household totals from per-account balances, without a second database round trip. */
+export function coupleBalanceFromAccounts(
+  accounts: { owner_id: string; opening_balance: number; balance: number }[],
+  members: Member[],
+): CoupleBalance {
+  const rows = new Map<string, { user_id: string; opening_balance: number; balance: number }>();
+
+  for (const account of accounts) {
+    const row = rows.get(account.owner_id) ?? {
+      user_id: account.owner_id,
+      opening_balance: 0,
+      balance: 0,
+    };
+    row.opening_balance += account.opening_balance;
+    row.balance += account.balance;
+    rows.set(account.owner_id, row);
+  }
+
+  return coupleBalance([...rows.values()], members);
 }
 
 /**

@@ -7,15 +7,10 @@
 
 import { useAuth } from "@/lib/auth";
 import { budgetStatuses } from "@/lib/analytics";
+import { ChatProvider } from "@/lib/chat";
 import { MonthProvider, useMonth } from "@/lib/month";
 import { notifyBudgetThresholds } from "@/lib/notifications";
-import {
-  useBudgets,
-  useCurrency,
-  useLedgerRealtime,
-  usePostDueRecurring,
-  useTransactions,
-} from "@/lib/queries";
+import { useCurrency, useLedgerRealtime, useLedgerSnapshot, usePostDueRecurring } from "@/lib/queries";
 import { useThemeColors } from "@/lib/theme";
 import { Redirect, Stack } from "expo-router";
 import React, { useEffect, useMemo } from "react";
@@ -24,12 +19,12 @@ import { View } from "react-native";
 function BudgetAlerts() {
   const { monthKey } = useMonth();
   const currency = useCurrency();
-  const transactions = useTransactions(monthKey);
-  const { data: budgets = [] } = useBudgets();
+  const snapshot = useLedgerSnapshot(monthKey);
 
   const statuses = useMemo(
-    () => budgetStatuses(budgets, transactions.data ?? [], monthKey),
-    [budgets, transactions.data, monthKey],
+    () =>
+      budgetStatuses(snapshot.data?.budgets ?? [], snapshot.data?.transactions ?? [], monthKey),
+    [snapshot.data, monthKey],
   );
 
   useEffect(() => {
@@ -46,33 +41,36 @@ function AppStack() {
   usePostDueRecurring();
 
   return (
-    <MonthProvider>
-      <BudgetAlerts />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.canvas },
-        }}
-      >
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen
-          name="entry"
-          options={{ presentation: "modal", animation: "slide_from_bottom" }}
-        />
-        <Stack.Screen name="accounts" />
-        <Stack.Screen name="budgets" />
-        <Stack.Screen name="debts" />
-        <Stack.Screen name="income" />
-        <Stack.Screen name="import-mpesa" />
-        <Stack.Screen name="household" />
-        <Stack.Screen name="profile" />
-        <Stack.Screen name="help" />
-        <Stack.Screen name="usage" />
-        <Stack.Screen name="faq" />
-        <Stack.Screen name="terms" />
-        <Stack.Screen name="privacy" />
-      </Stack>
-    </MonthProvider>
+    <ChatProvider>
+      <MonthProvider>
+        <BudgetAlerts />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.canvas },
+          }}
+        >
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="entry"
+            options={{ presentation: "modal", animation: "slide_from_bottom" }}
+          />
+          <Stack.Screen name="accounts" />
+          <Stack.Screen name="budgets" />
+          <Stack.Screen name="plans" />
+          <Stack.Screen name="debts" />
+          <Stack.Screen name="income" />
+          <Stack.Screen name="import-mpesa" />
+          <Stack.Screen name="household" />
+          <Stack.Screen name="profile" />
+          <Stack.Screen name="help" />
+          <Stack.Screen name="usage" />
+          <Stack.Screen name="faq" />
+          <Stack.Screen name="terms" />
+          <Stack.Screen name="privacy" />
+        </Stack>
+      </MonthProvider>
+    </ChatProvider>
   );
 }
 

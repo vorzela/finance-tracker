@@ -143,6 +143,16 @@ create index if not exists transactions_user_date_idx
   on public.transactions (user_id, occurred_at desc);
 create index if not exists transactions_debt_idx
   on public.transactions (debt_id) where debt_id is not null;
+-- Balance RPCs join on these; an OR of two unindexed FKs forced a seq scan.
+create index if not exists transactions_account_idx
+  on public.transactions (account_id)
+  where account_id is not null;
+create index if not exists transactions_to_account_idx
+  on public.transactions (to_account_id)
+  where to_account_id is not null;
+create index if not exists transactions_personal_date_idx
+  on public.transactions (user_id, occurred_at desc)
+  where group_id is null;
 
 -- ── Recurring entries ───────────────────────────────────────────────────────
 -- A monthly salary or a fixed bill, described once. `post_due_recurring()`
@@ -169,6 +179,30 @@ create table if not exists public.recurring_entries (
 
 create index if not exists recurring_scope_idx
   on public.recurring_entries (group_id, user_id);
+
+-- ── Chat ────────────────────────────────────────────────────────────────────
+-- One thread per household. Presence and typing live on the Realtime channel
+-- in the app; only the messages themselves are stored.
+
+create table if not exists public.messages (
+  id         uuid        primary key default gen_random_uuid(),
+  group_id   uuid        not null references public.groups (id) on delete cascade,
+  user_id    uuid        not null references public.profiles (id) on delete cascade,
+  body       text        not null
+             check (char_length(trim(body)) between 1 and 2000),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists messages_group_created_idx
+  on public.messages (group_id, created_at desc);
+
+-- Expo push tokens so a message can wake the other phone.
+create table if not exists public.push_tokens (
+  user_id    uuid        primary key references public.profiles (id) on delete cascade,
+  token      text        not null,
+  platform   text,
+  updated_at timestamptz not null default now()
+);
 
 -- ── Budgets ─────────────────────────────────────────────────────────────────
 -- A monthly ceiling. `category_id` null means the ceiling covers all spending.
@@ -220,7 +254,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.group_members
-    where group_id = gid and user_id = auth.uid()
+    where group_id = gid and user_id = (select auth.uid())
   );
 $$;
 
@@ -233,7 +267,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.group_members
-    where group_id = gid and user_id = auth.uid() and role = 'owner'
+    where group_id = gid and user_id = (select auth.uid()) and role = 'owner'
   );
 $$;
 
@@ -248,7 +282,7 @@ as $$
     select 1
     from public.group_members mine
     join public.group_members theirs on theirs.group_id = mine.group_id
-    where mine.user_id = auth.uid() and theirs.user_id = other
+    where mine.user_id = (select auth.uid()) and theirs.user_id = other
   );
 $$;
 
@@ -420,23 +454,34 @@ language sql
 stable
 set search_path = public
 as $$
+  -- Two indexed scans instead of `account_id = a.id OR to_account_id = a.id`,
+  -- which cannot use either foreign-key index and scanned every transaction.
+  with movements as (
+    select
+      t.account_id as account_id,
+      case t.kind
+        when 'income' then t.amount - t.fee_amount
+        else -t.amount - t.fee_amount
+      end as delta
+    from public.transactions t
+    where t.group_id is not distinct from p_group_id
+      and t.account_id is not null
+
+    union all
+
+    select
+      t.to_account_id,
+      t.amount
+    from public.transactions t
+    where t.group_id is not distinct from p_group_id
+      and t.kind = 'transfer'
+      and t.to_account_id is not null
+  )
   select
     a.id,
-    a.opening_balance + coalesce(sum(
-      case
-        when t.id is null                                   then 0
-        -- The fee is deducted wherever the money moved from, so it is
-        -- subtracted on every kind rather than only on expenses.
-        when t.account_id = a.id    and t.kind = 'income'   then  t.amount - t.fee_amount
-        when t.account_id = a.id    and t.kind = 'expense'  then -t.amount - t.fee_amount
-        when t.account_id = a.id    and t.kind = 'transfer' then -t.amount - t.fee_amount
-        when t.to_account_id = a.id and t.kind = 'transfer' then  t.amount
-        else 0
-      end
-    ), 0)
+    a.opening_balance + coalesce(sum(m.delta), 0)::bigint
   from public.accounts a
-  left join public.transactions t
-    on t.account_id = a.id or t.to_account_id = a.id
+  left join movements m on m.account_id = a.id
   where a.group_id is not distinct from p_group_id
   group by a.id, a.opening_balance;
 $$;
@@ -478,11 +523,120 @@ as $$
   group by d.id, d.principal;
 $$;
 
+-- Monthly spend/income totals. The client passes local-time bounds and timezone
+-- so a month on the phone matches a month in the database.
+create or replace function public.month_history(
+  p_group_id uuid default null,
+  p_from timestamptz default date_trunc('month', now()) - interval '5 months',
+  p_until timestamptz default date_trunc('month', now()) + interval '1 month',
+  p_tz text default 'UTC'
+)
+returns table (month_key text, spent bigint, earned bigint)
+language sql
+stable
+set search_path = public
+as $$
+  select
+    to_char((t.occurred_at at time zone p_tz), 'YYYY-MM') as month_key,
+    coalesce(sum(t.fee_amount + case when t.kind = 'expense' then t.amount else 0 end), 0)::bigint as spent,
+    coalesce(sum(case when t.kind = 'income' then t.amount else 0 end), 0)::bigint as earned
+  from public.transactions t
+  where t.group_id is not distinct from p_group_id
+    and t.occurred_at >= p_from
+    and t.occurred_at < p_until
+  group by 1
+  order by 1;
+$$;
+
+-- One round trip for the dashboard: this month's rows, six months of totals,
+-- accounts with balances, budgets, and the people on the ledger.
+create or replace function public.ledger_home(
+  p_group_id uuid default null,
+  p_from timestamptz default date_trunc('month', now()),
+  p_until timestamptz default date_trunc('month', now()) + interval '1 month',
+  p_history_from timestamptz default date_trunc('month', now()) - interval '5 months',
+  p_tz text default 'UTC'
+)
+returns jsonb
+language sql
+stable
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'transactions', (
+      select coalesce(jsonb_agg(to_jsonb(t) order by t.occurred_at desc), '[]'::jsonb)
+      from public.transactions t
+      where t.group_id is not distinct from p_group_id
+        and t.occurred_at >= p_from
+        and t.occurred_at < p_until
+    ),
+    'history', (
+      select coalesce(jsonb_agg(to_jsonb(h) order by h.month_key), '[]'::jsonb)
+      from public.month_history(p_group_id, p_history_from, p_until, p_tz) h
+    ),
+    'accounts', (
+      select coalesce(jsonb_agg(to_jsonb(a) order by a.created_at), '[]'::jsonb)
+      from (
+        select
+          acc.id,
+          acc.owner_id,
+          acc.group_id,
+          acc.name,
+          acc.type,
+          acc.opening_balance,
+          acc.color,
+          acc.archived,
+          acc.created_at,
+          acc.updated_at,
+          coalesce(bal.balance, acc.opening_balance) as balance
+        from public.accounts acc
+        left join public.account_balances(p_group_id) bal on bal.account_id = acc.id
+        where acc.group_id is not distinct from p_group_id
+          and not acc.archived
+      ) a
+    ),
+    'budgets', (
+      select coalesce(jsonb_agg(to_jsonb(b)), '[]'::jsonb)
+      from public.budgets b
+      where b.group_id is not distinct from p_group_id
+    ),
+    'members', (
+      case
+        when p_group_id is null then (
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'id', p.id,
+            'name', p.display_name,
+            'color', p.color,
+            'role', 'owner',
+            'is_self', true,
+            'avatar_url', p.avatar_url
+          )), '[]'::jsonb)
+          from public.profiles p
+          where p.id = (select auth.uid())
+        )
+        else (
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'id', gm.user_id,
+            'name', coalesce(p.display_name, 'Member'),
+            'color', coalesce(p.color, '#6b7280'),
+            'role', gm.role,
+            'is_self', gm.user_id = (select auth.uid()),
+            'avatar_url', p.avatar_url
+          ) order by gm.joined_at), '[]'::jsonb)
+          from public.group_members gm
+          left join public.profiles p on p.id = gm.user_id
+          where gm.group_id = p_group_id
+        )
+      end
+    )
+  );
+$$;
+
 -- ============================================================================
 -- Recurring entries → transactions
 --
 -- Called on app open. `security invoker` is deliberate: the caller's policies
--- apply, and the `user_id = auth.uid()` filter means one phone can never post
+-- apply, and the `user_id = (select auth.uid())` filter means one phone can never post
 -- the other person's salary.
 -- ============================================================================
 
@@ -499,14 +653,14 @@ declare
   post_day   integer;
   posted     integer := 0;
 begin
-  if auth.uid() is null then
+  if (select auth.uid()) is null then
     return 0;
   end if;
 
   for entry in
     select *
     from public.recurring_entries
-    where user_id = auth.uid()
+    where user_id = (select auth.uid())
       and active
       and coalesce(last_posted_month, '') <> this_month
   loop
@@ -544,6 +698,8 @@ alter table public.transactions      enable row level security;
 alter table public.budgets           enable row level security;
 alter table public.debts             enable row level security;
 alter table public.recurring_entries enable row level security;
+alter table public.messages          enable row level security;
+alter table public.push_tokens       enable row level security;
 
 -- ── profiles ────────────────────────────────────────────────────────────────
 -- Readable for yourself and for anyone you share a group with, so the app can
@@ -551,15 +707,15 @@ alter table public.recurring_entries enable row level security;
 
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
-  for select using (id = auth.uid() or public.shares_group_with(id));
+  for select using (id = (select auth.uid()) or public.shares_group_with(id));
 
 drop policy if exists profiles_insert on public.profiles;
 create policy profiles_insert on public.profiles
-  for insert with check (id = auth.uid());
+  for insert with check (id = (select auth.uid()));
 
 drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles
-  for update using (id = auth.uid()) with check (id = auth.uid());
+  for update using (id = (select auth.uid())) with check (id = (select auth.uid()));
 
 -- ── groups ──────────────────────────────────────────────────────────────────
 -- Inserts go through `create_group`, so there is deliberately no insert policy.
@@ -581,11 +737,11 @@ create policy groups_delete on public.groups
 
 drop policy if exists group_members_select on public.group_members;
 create policy group_members_select on public.group_members
-  for select using (user_id = auth.uid() or public.is_group_member(group_id));
+  for select using (user_id = (select auth.uid()) or public.is_group_member(group_id));
 
 drop policy if exists group_members_delete on public.group_members;
 create policy group_members_delete on public.group_members
-  for delete using (user_id = auth.uid() or public.is_group_owner(group_id));
+  for delete using (user_id = (select auth.uid()) or public.is_group_owner(group_id));
 
 -- ── accounts ────────────────────────────────────────────────────────────────
 -- Shared accounts are editable by any member: a household ledger is only
@@ -595,7 +751,7 @@ drop policy if exists accounts_select on public.accounts;
 create policy accounts_select on public.accounts
   for select using (
     case when group_id is null
-      then owner_id = auth.uid()
+      then owner_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -603,7 +759,7 @@ create policy accounts_select on public.accounts
 drop policy if exists accounts_insert on public.accounts;
 create policy accounts_insert on public.accounts
   for insert with check (
-    owner_id = auth.uid()
+    owner_id = (select auth.uid())
     and (group_id is null or public.is_group_member(group_id))
   );
 
@@ -611,7 +767,7 @@ drop policy if exists accounts_update on public.accounts;
 create policy accounts_update on public.accounts
   for update using (
     case when group_id is null
-      then owner_id = auth.uid()
+      then owner_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   ) with check (
@@ -622,7 +778,7 @@ drop policy if exists accounts_delete on public.accounts;
 create policy accounts_delete on public.accounts
   for delete using (
     case when group_id is null
-      then owner_id = auth.uid()
+      then owner_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -633,7 +789,7 @@ drop policy if exists transactions_select on public.transactions;
 create policy transactions_select on public.transactions
   for select using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -641,7 +797,7 @@ create policy transactions_select on public.transactions
 drop policy if exists transactions_insert on public.transactions;
 create policy transactions_insert on public.transactions
   for insert with check (
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     and (group_id is null or public.is_group_member(group_id))
   );
 
@@ -649,7 +805,7 @@ drop policy if exists transactions_update on public.transactions;
 create policy transactions_update on public.transactions
   for update using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   ) with check (
@@ -660,7 +816,7 @@ drop policy if exists transactions_delete on public.transactions;
 create policy transactions_delete on public.transactions
   for delete using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -671,7 +827,7 @@ drop policy if exists budgets_select on public.budgets;
 create policy budgets_select on public.budgets
   for select using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -679,7 +835,7 @@ create policy budgets_select on public.budgets
 drop policy if exists budgets_insert on public.budgets;
 create policy budgets_insert on public.budgets
   for insert with check (
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     and (group_id is null or public.is_group_member(group_id))
   );
 
@@ -687,7 +843,7 @@ drop policy if exists budgets_update on public.budgets;
 create policy budgets_update on public.budgets
   for update using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   ) with check (
@@ -698,7 +854,7 @@ drop policy if exists budgets_delete on public.budgets;
 create policy budgets_delete on public.budgets
   for delete using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -711,7 +867,7 @@ drop policy if exists debts_select on public.debts;
 create policy debts_select on public.debts
   for select using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -719,7 +875,7 @@ create policy debts_select on public.debts
 drop policy if exists debts_insert on public.debts;
 create policy debts_insert on public.debts
   for insert with check (
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     and (group_id is null or public.is_group_member(group_id))
   );
 
@@ -727,7 +883,7 @@ drop policy if exists debts_update on public.debts;
 create policy debts_update on public.debts
   for update using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   ) with check (
@@ -738,7 +894,7 @@ drop policy if exists debts_delete on public.debts;
 create policy debts_delete on public.debts
   for delete using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -752,7 +908,7 @@ drop policy if exists recurring_select on public.recurring_entries;
 create policy recurring_select on public.recurring_entries
   for select using (
     case when group_id is null
-      then user_id = auth.uid()
+      then user_id = (select auth.uid())
       else public.is_group_member(group_id)
     end
   );
@@ -760,21 +916,130 @@ create policy recurring_select on public.recurring_entries
 drop policy if exists recurring_insert on public.recurring_entries;
 create policy recurring_insert on public.recurring_entries
   for insert with check (
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     and (group_id is null or public.is_group_member(group_id))
   );
 
 drop policy if exists recurring_update on public.recurring_entries;
 create policy recurring_update on public.recurring_entries
-  for update using (user_id = auth.uid())
+  for update using (user_id = (select auth.uid()))
   with check (
-    user_id = auth.uid()
+    user_id = (select auth.uid())
     and (group_id is null or public.is_group_member(group_id))
   );
 
 drop policy if exists recurring_delete on public.recurring_entries;
 create policy recurring_delete on public.recurring_entries
-  for delete using (user_id = auth.uid());
+  for delete using (user_id = (select auth.uid()));
+
+-- ── messages ────────────────────────────────────────────────────────────────
+
+drop policy if exists messages_select on public.messages;
+create policy messages_select on public.messages
+  for select using (public.is_group_member(group_id));
+
+drop policy if exists messages_insert on public.messages;
+create policy messages_insert on public.messages
+  for insert with check (
+    user_id = (select auth.uid())
+    and public.is_group_member(group_id)
+  );
+
+drop policy if exists messages_delete on public.messages;
+create policy messages_delete on public.messages
+  for delete using (user_id = (select auth.uid()));
+
+-- ── push_tokens ─────────────────────────────────────────────────────────────
+
+drop policy if exists push_tokens_select on public.push_tokens;
+create policy push_tokens_select on public.push_tokens
+  for select using (user_id = (select auth.uid()));
+
+drop policy if exists push_tokens_insert on public.push_tokens;
+create policy push_tokens_insert on public.push_tokens
+  for insert with check (user_id = (select auth.uid()));
+
+drop policy if exists push_tokens_update on public.push_tokens;
+create policy push_tokens_update on public.push_tokens
+  for update using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
+
+drop policy if exists push_tokens_delete on public.push_tokens;
+create policy push_tokens_delete on public.push_tokens
+  for delete using (user_id = (select auth.uid()));
+
+-- Wake the other phone. Best-effort: if pg_net is not enabled the insert still
+-- succeeds and the app falls back to an in-session Realtime notification.
+create or replace function public.notify_chat_message()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  sender_name text;
+  group_name text;
+  member_count integer;
+  title text;
+  rec record;
+  payload jsonb;
+begin
+  if not exists (select 1 from pg_extension where extname = 'pg_net') then
+    return new;
+  end if;
+
+  select p.display_name into sender_name
+  from public.profiles p
+  where p.id = new.user_id;
+
+  select g.name into group_name
+  from public.groups g
+  where g.id = new.group_id;
+
+  select count(*)::integer into member_count
+  from public.group_members
+  where group_id = new.group_id;
+
+  title := case
+    when member_count >= 3 then coalesce(group_name, 'Household') || ' · ' || coalesce(sender_name, 'Someone')
+    else coalesce(sender_name, 'Someone')
+  end;
+
+  for rec in
+    select t.token
+    from public.push_tokens t
+    join public.group_members gm on gm.user_id = t.user_id
+    where gm.group_id = new.group_id
+      and t.user_id <> new.user_id
+      and length(t.token) > 10
+  loop
+    payload := jsonb_build_object(
+      'to', rec.token,
+      'title', title,
+      'body', left(new.body, 140),
+      'sound', 'default',
+      'channelId', 'chat',
+      'data', jsonb_build_object('type', 'chat', 'groupId', new.group_id)
+    );
+    begin
+      perform net.http_post(
+        url := 'https://exp.host/--/api/v2/push/send',
+        headers := '{"Content-Type": "application/json"}'::jsonb,
+        body := payload
+      );
+    exception when others then
+      null;
+    end;
+  end loop;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_message_notify on public.messages;
+create trigger on_message_notify
+  after insert on public.messages
+  for each row execute function public.notify_chat_message();
 
 -- ============================================================================
 -- Realtime — lets one phone see the other's entry appear without a refresh.
@@ -799,6 +1064,10 @@ begin
       alter publication supabase_realtime add table public.debts;
     exception when duplicate_object then null;
     end;
+    begin
+      alter publication supabase_realtime add table public.messages;
+    exception when duplicate_object then null;
+    end;
   end if;
 end;
 $$;
@@ -811,7 +1080,8 @@ grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete
   on public.profiles, public.groups, public.group_members,
      public.accounts, public.transactions, public.budgets,
-     public.debts, public.recurring_entries
+     public.debts, public.recurring_entries, public.messages,
+     public.push_tokens
   to authenticated;
 grant execute on function public.create_group(text, text)   to authenticated;
 grant execute on function public.join_group(text)           to authenticated;
@@ -819,6 +1089,10 @@ grant execute on function public.rotate_invite_code(uuid)   to authenticated;
 grant execute on function public.account_balances(uuid)     to authenticated;
 grant execute on function public.member_balances(uuid)      to authenticated;
 grant execute on function public.debt_balances(uuid)        to authenticated;
+grant execute on function public.month_history(uuid, timestamptz, timestamptz, text)
+  to authenticated;
+grant execute on function public.ledger_home(uuid, timestamptz, timestamptz, timestamptz, text)
+  to authenticated;
 grant execute on function public.post_due_recurring()       to authenticated;
 
 -- ============================================================================
@@ -841,7 +1115,7 @@ create policy avatars_owner_write on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
 drop policy if exists avatars_owner_update on storage.objects;
@@ -849,7 +1123,7 @@ create policy avatars_owner_update on storage.objects
   for update to authenticated
   using (
     bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   );
 
 drop policy if exists avatars_owner_delete on storage.objects;
@@ -857,5 +1131,5 @@ create policy avatars_owner_delete on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'avatars'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] = (select auth.uid())::text
   );

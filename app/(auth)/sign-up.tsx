@@ -17,7 +17,8 @@ import { getErrorMessage } from "@/lib/error";
 import { Link } from "expo-router";
 import { ArrowRightIcon, EnvelopeIcon, UserIcon } from "phosphor-react-native";
 import React, { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Pressable, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -63,12 +64,12 @@ export default function SignUp() {
         style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       >
         <EnvelopeIcon size={56} color="#a9bfe0" weight="duotone" />
-        <Text className="text-center text-2xl font-bold tracking-tight text-white">
+        <AppText className="text-center text-2xl font-bold tracking-tight text-white">
           Confirm your email
-        </Text>
-        <Text className="text-center text-base leading-6 text-navy-200">
+        </AppText>
+        <AppText className="text-center text-base leading-6 text-navy-200">
           We sent a link to {email.trim()}. Tap it, then come back and sign in.
-        </Text>
+        </AppText>
         <Link href="/(auth)/sign-in" asChild>
           <Button variant="secondary" size="lg" className="mt-2 w-full">
             Back to sign in
@@ -94,12 +95,12 @@ export default function SignUp() {
         <View className="items-center gap-5">
           <Logo size={72} />
           <View className="gap-2">
-            <Text className="text-center text-3xl font-bold tracking-tight text-white">
+            <AppText className="text-center text-3xl font-bold tracking-tight text-white">
               Create your account
-            </Text>
-            <Text className="text-center text-base text-navy-200">
+            </AppText>
+            <AppText className="text-center text-base text-navy-200">
               Track your own spending, then share a ledger when you&apos;re ready.
-            </Text>
+            </AppText>
           </View>
         </View>
 
@@ -144,14 +145,14 @@ export default function SignUp() {
               className="flex-row items-center justify-between rounded-2xl border border-gray-200/60 bg-gray-50 px-4 py-4 active:bg-gray-100"
             >
               <View>
-                <Text className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                <AppText className="text-xs font-bold uppercase tracking-wider text-gray-500">
                   Currency
-                </Text>
-                <Text className="mt-1 text-base text-gray-900">
+                </AppText>
+                <AppText className="mt-1 text-base text-gray-900">
                   {currencyCode} · {currencySymbol(currencyCode)}
-                </Text>
+                </AppText>
               </View>
-              <Text className="text-sm font-semibold text-navy-500">Change</Text>
+              <AppText className="text-sm font-semibold text-navy-500">Change</AppText>
             </Pressable>
 
             {error ? <ErrorNote message={error} /> : null}
@@ -170,10 +171,10 @@ export default function SignUp() {
         </View>
 
         <View className="mt-auto flex-row items-center justify-center gap-1.5 pt-8">
-          <Text className="text-base text-navy-200">Already have one?</Text>
+          <AppText className="text-base text-navy-200">Already have one?</AppText>
           <Link href="/(auth)/sign-in" asChild>
             <Pressable hitSlop={8}>
-              <Text className="text-base font-bold text-white">Sign in</Text>
+              <AppText className="text-base font-bold text-white">Sign in</AppText>
             </Pressable>
           </Link>
         </View>

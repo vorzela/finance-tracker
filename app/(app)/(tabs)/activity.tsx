@@ -13,7 +13,8 @@ import { TransactionRow } from "@/components/finance/transaction-row";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { EmptyState, ErrorNote, Header, LoadingState, Screen } from "@/components/ui/screen";
+import { EmptyState, ErrorNote, Header, Screen } from "@/components/ui/screen";
+import { ActivitySkeleton } from "@/components/ui/shimmer";
 import { TAB_BAR_HEIGHT } from "@/components/ui/tab-bar";
 import { getCategory } from "@/lib/categories";
 import { cn } from "@/lib/cn";
@@ -21,6 +22,7 @@ import { formatMoney } from "@/lib/currency";
 import { dayLabel } from "@/lib/date";
 import { groupByDay } from "@/lib/analytics";
 import { useMonth } from "@/lib/month";
+import { AppText } from "@/components/ui/app-text";
 import {
   useCurrency,
   useMembers,
@@ -28,6 +30,8 @@ import {
   useTransactions,
 } from "@/lib/queries";
 import { useScope } from "@/lib/scope";
+import { useThemeColors } from "@/lib/theme";
+import { activeFontFamily } from "@/lib/font-runtime";
 import { useRouter } from "expo-router";
 import {
   MagnifyingGlassIcon,
@@ -41,10 +45,11 @@ import {
   RefreshControl,
   ScrollView,
   SectionList,
-  Text,
+  StyleSheet,
   TextInput,
-  View,
+  View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { TransactionKind } from "@/types/database";
 import type { TransactionView } from "@/types/finance";
 
@@ -55,6 +60,7 @@ export default function Activity() {
   const { scope } = useScope();
   const currency = useCurrency();
   const router = useRouter();
+  const colors = useThemeColors();
 
   const transactions = useTransactions(monthKey);
   const { data: members } = useMembers();
@@ -65,6 +71,8 @@ export default function Activity() {
   const [memberId, setMemberId] = useState<string | null>(null);
 
   const isShared = scope.kind === "group";
+  const insets = useSafeAreaInsets();
+  const listPadBottom = TAB_BAR_HEIGHT + insets.bottom + 28;
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -117,7 +125,7 @@ export default function Activity() {
         right={<LedgerSwitcher />}
       />
 
-      <View className="gap-3 px-4 pb-3">
+      <View className="gap-3 px-5 pb-3">
         <MonthSwitcher
           monthKey={monthKey}
           onChange={setMonthKey}
@@ -125,19 +133,23 @@ export default function Activity() {
         />
 
         {/* Search */}
-        <View className="flex-row items-center gap-2.5 rounded-2xl border border-gray-200/70 bg-white px-4">
-          <MagnifyingGlassIcon size={18} color="#9ca3af" />
+        <View
+          className="flex-row items-center gap-2.5 rounded-2xl px-4"
+          style={{ backgroundColor: colors.subtle }}
+        >
+          <MagnifyingGlassIcon size={18} color={colors.faint} />
           <TextInput
             value={query}
             onChangeText={setQuery}
             placeholder="Search notes, categories, amounts"
-            placeholderTextColor="#9ca3af"
-            className="h-12 flex-1 text-base text-gray-900"
+            placeholderTextColor={colors.faint}
+            className="h-12 flex-1 text-[16px]"
+            style={{ color: colors.ink, fontFamily: activeFontFamily({ fontWeight: "400" }) }}
             returnKeyType="search"
           />
           {query.length > 0 ? (
             <Pressable onPress={() => setQuery("")} hitSlop={10}>
-              <XIcon size={16} color="#6b7280" weight="bold" />
+              <XIcon size={16} color={colors.muted} weight="bold" />
             </Pressable>
           ) : null}
         </View>
@@ -183,8 +195,10 @@ export default function Activity() {
         </ScrollView>
       </View>
 
-      {transactions.isLoading ? (
-        <LoadingState label="Loading this month" />
+      {transactions.isLoading && !transactions.data ? (
+        <View className="px-5">
+          <ActivitySkeleton />
+        </View>
       ) : transactions.error ? (
         <View className="px-4">
           <ErrorNote
@@ -198,8 +212,8 @@ export default function Activity() {
           keyExtractor={(item) => item.id}
           stickySectionHeadersEnabled={false}
           contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingBottom: TAB_BAR_HEIGHT + 32,
+            paddingHorizontal: 20,
+            paddingBottom: listPadBottom,
             gap: 12,
           }}
           showsVerticalScrollIndicator={false}
@@ -207,21 +221,23 @@ export default function Activity() {
             <RefreshControl
               refreshing={transactions.isRefetching}
               onRefresh={() => void transactions.refetch()}
-              tintColor="#1e3a5f"
+              tintColor={colors.brand}
             />
           }
           renderSectionHeader={({ section }) => (
             <View className="flex-row items-baseline justify-between px-1 pt-2">
-              <Text className="text-xs font-bold uppercase tracking-widest text-gray-400">
+              <AppText
+                className="text-[12px] font-semibold tracking-tight"
+                style={{ color: colors.muted }}
+              >
                 {section.title}
-              </Text>
+              </AppText>
               {section.net !== 0 ? (
                 <Money
                   amount={section.net}
                   currency={currency}
                   size="sm"
                   showSign
-                  className={section.net > 0 ? "text-green-500" : "text-gray-500"}
                 />
               ) : null}
             </View>
@@ -239,7 +255,7 @@ export default function Activity() {
           ListEmptyComponent={
             <Card className="mt-4">
               <EmptyState
-                icon={<ReceiptIcon size={28} color="#1e3a5f" weight="duotone" />}
+                icon={<ReceiptIcon size={28} color={colors.brand} weight="duotone" />}
                 title={isFiltered ? "Nothing matches" : "Nothing this month"}
                 message={
                   isFiltered
@@ -261,7 +277,7 @@ export default function Activity() {
                   ) : (
                     <Button
                       onPress={() => router.push("/entry")}
-                      icon={<PlusIcon size={20} color="#fff" weight="bold" />}
+                      icon={<PlusIcon size={20} color={colors.onBrand} weight="bold" />}
                     >
                       Add a transaction
                     </Button>
@@ -295,19 +311,22 @@ function DayCard({
   last: boolean;
   onPress: () => void;
 }) {
+  const colors = useThemeColors();
+
   return (
     <View
-      className={cn(
-        "border-x border-gray-200/70 bg-white",
-        first && "rounded-t-3xl border-t",
-        last && "rounded-b-3xl border-b",
-      )}
+      className={cn(first && "rounded-t-[22px]", last && "rounded-b-[22px]")}
+      style={{
+        backgroundColor: colors.surface,
+        borderTopWidth: first ? 0 : StyleSheet.hairlineWidth,
+        borderTopColor: colors.hairline,
+      }}
     >
       <TransactionRow
         transaction={transaction}
         currency={currency}
         showMember={showMember}
-        last={last}
+        last
         onPress={onPress}
       />
     </View>
@@ -325,25 +344,23 @@ function FilterChip({
   onPress: () => void;
   leading?: React.ReactNode;
 }) {
+  const colors = useThemeColors();
+
   return (
     <Pressable
       onPress={onPress}
-      className={cn(
-        "h-9 flex-row items-center gap-1.5 rounded-full border px-3.5",
-        active
-          ? "border-navy-600 bg-navy-600"
-          : "border-gray-200 bg-white active:bg-gray-50",
-      )}
+      className="will-change-pressable h-9 flex-row items-center gap-1.5 rounded-full px-3.5"
+      style={{
+        backgroundColor: active ? colors.brand : colors.subtle,
+      }}
     >
       {leading}
-      <Text
-        className={cn(
-          "text-sm font-semibold tracking-tight",
-          active ? "text-white" : "text-gray-600",
-        )}
+      <AppText
+        className="text-[13px] font-semibold tracking-tight"
+        style={{ color: active ? colors.onBrand : colors.ink }}
       >
         {label}
-      </Text>
+      </AppText>
     </Pressable>
   );
 }

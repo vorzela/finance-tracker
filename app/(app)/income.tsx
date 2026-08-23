@@ -42,7 +42,8 @@ import {
   WalletIcon,
 } from "phosphor-react-native";
 import React, { useMemo, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Alert, Pressable, View } from "react-native";
 import type { RecurringKind } from "@/types/database";
 import type { RecurringView } from "@/types/finance";
 
@@ -160,7 +161,7 @@ export default function Income() {
   const renderList = (list: RecurringView[], empty: string) => (
     <Card flush>
       {list.length === 0 ? (
-        <Text className="px-5 py-6 text-center text-sm text-muted">{empty}</Text>
+        <AppText className="px-5 py-6 text-center text-sm text-muted">{empty}</AppText>
       ) : (
         list.map((entry, index) => (
           <Pressable
@@ -173,14 +174,14 @@ export default function Income() {
             <View className="flex-row items-center gap-3">
               <CategoryBadge categoryId={entry.category_id} size={34} />
               <View className="flex-1">
-                <Text className="text-base font-semibold text-ink">{entry.label}</Text>
-                <Text className="mt-0.5 text-sm text-muted">
+                <AppText className="text-base font-semibold text-ink">{entry.label}</AppText>
+                <AppText className="mt-0.5 text-sm text-muted">
                   Day {entry.day_of_month}
                   {entry.accountName ? ` · ${entry.accountName}` : ""}
                   {entry.postedThisMonth
                     ? " · posted this month"
                     : ` · next ${shortDayLabel(entry.nextPostOn)}`}
-                </Text>
+                </AppText>
               </View>
               <Money
                 amount={entry.amount}
@@ -200,16 +201,16 @@ export default function Income() {
                 ) : (
                   <PlayIcon size={14} color="#1e3a5f" weight="bold" />
                 )}
-                <Text className="text-xs font-semibold text-brand">
+                <AppText className="text-xs font-semibold text-brand">
                   {entry.active ? "Pause" : "Resume"}
-                </Text>
+                </AppText>
               </Pressable>
               <Pressable
                 onPress={() => confirmDelete(entry)}
                 className="flex-row items-center gap-1.5 rounded-full bg-negative-soft px-3 py-1.5"
               >
                 <TrashIcon size={14} color="#e02020" weight="bold" />
-                <Text className="text-xs font-semibold text-negative">Remove</Text>
+                <AppText className="text-xs font-semibold text-negative">Remove</AppText>
               </Pressable>
             </View>
           </Pressable>
@@ -268,9 +269,9 @@ export default function Income() {
             <>
               <View className="flex-row gap-3">
                 <Card className="flex-1">
-                  <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+                  <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
                     Monthly in
-                  </Text>
+                  </AppText>
                   <Money
                     amount={monthlyIn}
                     currency={currency}
@@ -279,9 +280,9 @@ export default function Income() {
                   />
                 </Card>
                 <Card className="flex-1">
-                  <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+                  <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
                     Fixed bills
-                  </Text>
+                  </AppText>
                   <Money
                     amount={monthlyOut}
                     currency={currency}
@@ -295,7 +296,7 @@ export default function Income() {
                 title="Income"
                 action={
                   <Pressable hitSlop={8} onPress={() => openNew("income")}>
-                    <Text className="text-sm font-semibold text-brand">Add</Text>
+                    <AppText className="text-sm font-semibold text-brand">Add</AppText>
                   </Pressable>
                 }
               >
@@ -306,7 +307,7 @@ export default function Income() {
                 title="Fixed bills"
                 action={
                   <Pressable hitSlop={8} onPress={() => openNew("expense")}>
-                    <Text className="text-sm font-semibold text-brand">Add</Text>
+                    <AppText className="text-sm font-semibold text-brand">Add</AppText>
                   </Pressable>
                 }
               >
@@ -355,12 +356,12 @@ export default function Income() {
           >
             <CategoryBadge categoryId={categoryId} size={34} />
             <View className="flex-1">
-              <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+              <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
                 Category
-              </Text>
-              <Text className="text-base font-semibold text-ink">
+              </AppText>
+              <AppText className="text-base font-semibold text-ink">
                 {getCategory(categoryId).label}
-              </Text>
+              </AppText>
             </View>
           </Pressable>
           <Pressable
@@ -371,12 +372,12 @@ export default function Income() {
               <WalletIcon size={20} color="#2a5298" weight="duotone" />
             </IconTile>
             <View className="flex-1">
-              <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+              <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
                 Account
-              </Text>
-              <Text className="text-base font-semibold text-ink">
+              </AppText>
+              <AppText className="text-base font-semibold text-ink">
                 {accounts.find((account) => account.id === accountId)?.name ?? "Optional"}
-              </Text>
+              </AppText>
             </View>
           </Pressable>
           {formError ? <ErrorNote message={formError} /> : null}

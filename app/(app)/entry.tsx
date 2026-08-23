@@ -24,6 +24,7 @@ import { currencySymbol, formatMoney, parseAmount, toAmountInput } from "@/lib/c
 import { addDays, isoAt, timeLabel, toDayKey, todayKey, whenLabel } from "@/lib/date";
 import { getErrorMessage } from "@/lib/error";
 import { parseMpesaSms, productHint, productLabel } from "@/lib/mpesa/parse";
+import { AppText } from "@/components/ui/app-text";
 import {
   accountForPayMethod,
   getPayMethod,
@@ -69,8 +70,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Text,
-  View,
+  View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { TransactionKind } from "@/types/database";
@@ -451,9 +451,9 @@ export default function Entry() {
 
         {kind !== "transfer" ? (
           <Card className="gap-2">
-            <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+            <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
               Paid with
-            </Text>
+            </AppText>
             <View className="flex-row flex-wrap gap-2">
               {PAY_METHOD_OPTIONS.map((option) => {
                 const selected = option.value === payMethod;
@@ -462,25 +462,25 @@ export default function Entry() {
                     key={option.value}
                     onPress={() => changePayMethod(option.value)}
                     className={cn(
-                      "min-w-[46%] flex-1 flex-row items-center gap-2 rounded-2xl border px-3 py-2.5",
+                      "will-change-pressable min-w-[46%] flex-1 flex-row items-center gap-2 rounded-2xl border px-3 py-2.5",
                       selected
                         ? "border-brand bg-brand-soft"
-                        : "border-hairline bg-subtle active:opacity-80",
+                        : "border-hairline bg-subtle",
                     )}
                   >
                     {payMethodIcon(option.value, selected ? colors.brand : "#6b7280")}
                     <View className="flex-1">
-                      <Text
+                      <AppText
                         className={cn(
                           "text-sm font-semibold",
                           selected ? "text-brand" : "text-ink",
                         )}
                       >
                         {option.label}
-                      </Text>
-                      <Text className="text-[10px] leading-4 text-muted" numberOfLines={2}>
+                      </AppText>
+                      <AppText className="text-[10px] leading-4 text-muted" numberOfLines={2}>
                         {option.hint}
-                      </Text>
+                      </AppText>
                     </View>
                   </Pressable>
                 );
@@ -491,14 +491,14 @@ export default function Entry() {
 
         {needsMethodAccount ? (
           <Card className="gap-3">
-            <Text className="text-base font-semibold text-ink">
+            <AppText className="text-base font-semibold text-ink">
               Set up {pay.label} first
-            </Text>
-            <Text className="text-sm leading-5 text-muted">
+            </AppText>
+            <AppText className="text-sm leading-5 text-muted">
               Every method needs its own account with an opening balance of at least{" "}
               {currencySymbol(currency)}0. After that, spending counts from that balance
               (it can go negative).
-            </Text>
+            </AppText>
             <Input
               label="Opening balance"
               placeholder="0"
@@ -506,9 +506,9 @@ export default function Entry() {
               onChangeText={setOpeningSetupText}
               keyboardType="decimal-pad"
               leadingNode={
-                <Text className="text-base font-bold text-faint">
+                <AppText className="text-base font-bold text-faint">
                   {currencySymbol(currency)}
-                </Text>
+                </AppText>
               }
               hint="Use 0 if the wallet is empty right now."
             />
@@ -521,13 +521,13 @@ export default function Entry() {
           </Card>
         ) : fromAccount && kind !== "transfer" ? (
           <Card className="gap-1">
-            <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+            <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
               {fromAccount.name} balance
-            </Text>
+            </AppText>
             <View className="flex-row items-baseline justify-between gap-3">
-              <Text className="text-sm text-muted">
+              <AppText className="text-sm text-muted">
                 Now{" "}
-                <Text
+                <AppText
                   className={
                     fromAccount.balance < 0
                       ? "font-semibold text-negative"
@@ -535,14 +535,14 @@ export default function Entry() {
                   }
                 >
                   {formatMoney(fromAccount.balance, currency)}
-                </Text>
-                <Text className="text-faint">
+                </AppText>
+                <AppText className="text-faint">
                   {" "}
                   · opened {formatMoney(fromAccount.opening_balance, currency)}
-                </Text>
-              </Text>
+                </AppText>
+              </AppText>
               {balanceAfter !== null ? (
-                <Text
+                <AppText
                   className={
                     balanceAfter < 0
                       ? "text-sm font-semibold text-negative"
@@ -550,7 +550,7 @@ export default function Entry() {
                   }
                 >
                   After {formatMoney(balanceAfter, currency)}
-                </Text>
+                </AppText>
               ) : null}
             </View>
           </Card>
@@ -560,10 +560,10 @@ export default function Entry() {
           <Card className="gap-3">
             <View className="flex-row items-center gap-2">
               <ChatTeardropTextIcon size={18} color="#22a06b" weight="duotone" />
-              <Text className="flex-1 text-sm font-semibold text-ink">
+              <AppText className="flex-1 text-sm font-semibold text-ink">
                 Paste {payMethod === "mpesa" ? "M-Pesa" : payMethod === "bank" ? "bank" : "card"}{" "}
                 SMS
-              </Text>
+              </AppText>
             </View>
             <Input
               label="Confirmation message"
@@ -574,17 +574,17 @@ export default function Entry() {
               numberOfLines={4}
             />
             {smsHint ? (
-              <Text className="text-xs leading-5 text-brand">{smsHint}</Text>
+              <AppText className="text-xs leading-5 text-brand">{smsHint}</AppText>
             ) : (
-              <Text className="text-xs leading-5 text-muted">
+              <AppText className="text-xs leading-5 text-muted">
                 Or type the amount below. Transaction cost is read from the SMS when present.
-              </Text>
+              </AppText>
             )}
           </Card>
         ) : null}
 
-        <View className="items-center gap-1 rounded-3xl border border-hairline bg-subtle px-5 py-6">
-          <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+        <View className="items-center gap-1 rounded-[22px] bg-subtle px-5 py-7">
+          <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
             {kind === "income"
               ? "Amount received"
               : kind === "transfer"
@@ -592,12 +592,12 @@ export default function Entry() {
                 : payMethod === "cash"
                   ? "Cash amount"
                   : "Amount spent"}
-          </Text>
+          </AppText>
 
           <View className="mt-1 flex-row items-center justify-center">
-            <Text className="mr-1.5 text-2xl font-bold text-faint">
+            <AppText className="mr-1.5 text-2xl font-bold text-faint">
               {currencySymbol(currency)}
-            </Text>
+            </AppText>
             <Input
               value={amountText}
               onChangeText={setAmountText}
@@ -611,9 +611,9 @@ export default function Entry() {
           </View>
 
           {amount !== null ? (
-            <Text className="text-sm text-muted">{formatMoney(amount, currency)}</Text>
+            <AppText className="text-sm text-muted">{formatMoney(amount, currency)}</AppText>
           ) : (
-            <Text className="text-sm text-faint">Type an amount</Text>
+            <AppText className="text-sm text-faint">Type an amount</AppText>
           )}
         </View>
 
@@ -624,10 +624,10 @@ export default function Entry() {
                 <ReceiptIcon size={20} color="#6b7280" weight="duotone" />
               </IconTile>
               <View className="flex-1">
-                <Text className="text-base font-semibold text-ink">Transaction fee</Text>
-                <Text className="text-sm text-muted">
+                <AppText className="text-base font-semibold text-ink">Transaction fee</AppText>
+                <AppText className="text-sm text-muted">
                   M-Pesa, bank or card charge. Counted as spending.
-                </Text>
+                </AppText>
               </View>
               <View className="w-28">
                 <Input
@@ -640,18 +640,18 @@ export default function Entry() {
               </View>
             </View>
             {feeAmount > 0 && amount !== null ? (
-              <Text className="mt-3 text-sm text-muted">
+              <AppText className="mt-3 text-sm text-muted">
                 Total leaving account:{" "}
-                <Text className="font-semibold text-ink">
+                <AppText className="font-semibold text-ink">
                   {formatMoney(amount + feeAmount, currency)}
-                </Text>
-              </Text>
+                </AppText>
+              </AppText>
             ) : null}
           </Card>
         ) : payMethod === "cash" && kind !== "income" && kind !== "transfer" ? (
-          <Text className="px-1 text-xs text-muted">
+          <AppText className="px-1 text-xs text-muted">
             Cash has no transaction cost — just the amount.
-          </Text>
+          </AppText>
         ) : null}
 
         <Card flush>
@@ -783,14 +783,14 @@ export default function Entry() {
                   : "border-hairline bg-surface active:bg-subtle",
               )}
             >
-              <Text
+              <AppText
                 className={cn(
                   "text-sm font-semibold",
                   dayKey === option.key ? "text-brand" : "text-muted",
                 )}
               >
                 {option.label}
-              </Text>
+              </AppText>
             </Pressable>
           ))}
         </View>
@@ -818,7 +818,7 @@ export default function Entry() {
       </ScrollView>
 
       <View
-        className="border-t border-hairline bg-surface px-4 pt-3"
+        className="border-t border-hairline bg-surface px-5 pt-3"
         style={{ paddingBottom: insets.bottom + 12 }}
       >
         <Button
@@ -832,9 +832,9 @@ export default function Entry() {
           {isEditing ? "Save changes" : "Add entry"}
         </Button>
         {kind === "transfer" && accountId && accountId === toAccountId ? (
-          <Text className="mt-2 text-center text-xs text-negative">
+          <AppText className="mt-2 text-center text-xs text-negative">
             Pick two different accounts.
-          </Text>
+          </AppText>
         ) : null}
       </View>
 

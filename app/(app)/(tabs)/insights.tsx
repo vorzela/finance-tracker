@@ -19,20 +19,20 @@ import {
   EmptyState,
   ErrorNote,
   Header,
-  LoadingState,
   Screen,
   ScreenScroll,
 } from "@/components/ui/screen";
+import { InsightsSkeleton } from "@/components/ui/shimmer";
 import { TAB_BAR_HEIGHT } from "@/components/ui/tab-bar";
-import { monthlyHistory } from "@/lib/analytics";
+import { fillMonthHistory } from "@/lib/analytics";
 import { formatMoney } from "@/lib/currency";
 import { monthProgress, shortDayLabel, shortMonthLabel, shortWhenLabel } from "@/lib/date";
 import { getErrorMessage } from "@/lib/error";
 import { useMonth } from "@/lib/month";
 import {
   useCurrency,
-  useHistory,
   useMonthOverview,
+  useProfile,
   useTransactionViews,
 } from "@/lib/queries";
 import { shareMonthReportPdf } from "@/lib/report";
@@ -40,25 +40,26 @@ import { useScope } from "@/lib/scope";
 import { useRouter } from "expo-router";
 import { ChartPieSliceIcon, FilePdfIcon } from "phosphor-react-native";
 import React, { useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Pressable, View } from "react-native";
 
 export default function Insights() {
   const { monthKey, setMonthKey } = useMonth();
-  const { scope } = useScope();
+  const { scope, activeGroup } = useScope();
   const currency = useCurrency();
+  const { data: profile } = useProfile();
   const router = useRouter();
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
-  const { overview, rows, isLoading, isRefetching, refetch } = useMonthOverview(monthKey);
-  const history = useHistory(monthKey);
+  const { overview, rows, history, isLoading, isRefetching, refetch } = useMonthOverview(monthKey);
   const views = useTransactionViews(rows);
 
   const isShared = scope.kind === "group";
 
   const months = useMemo(
-    () => monthlyHistory(history.data ?? [], monthKey, 6),
-    [history.data, monthKey],
+    () => fillMonthHistory(history, monthKey, 6),
+    [history, monthKey],
   );
 
   const biggest = useMemo(
@@ -88,7 +89,11 @@ export default function Insights() {
         currency,
         overview,
         rows,
-        scopeLabel: isShared ? "Household" : "Personal",
+        scopeLabel: isShared ? (activeGroup?.name ?? "Household") : "Personal",
+        ownerName: isShared
+          ? [profile?.display_name, activeGroup?.name].filter(Boolean).join(" · ") ||
+            "Household"
+          : (profile?.display_name ?? "Me"),
       });
     } catch (cause) {
       setExportError(getErrorMessage(cause, "Couldn't create the PDF"));
@@ -100,7 +105,10 @@ export default function Insights() {
   if (isLoading && !overview) {
     return (
       <Screen>
-        <LoadingState />
+        <Header title="Insights" subtitle={shortMonthLabel(monthKey)} right={<LedgerSwitcher />} />
+        <ScreenScroll bottomInset={TAB_BAR_HEIGHT + 24}>
+          <InsightsSkeleton />
+        </ScreenScroll>
       </Screen>
     );
   }
@@ -127,10 +135,10 @@ export default function Insights() {
         {exportError ? <ErrorNote message={exportError} /> : null}
 
         <Card className="gap-3">
-          <Text className="text-sm leading-5 text-muted">
+          <AppText className="text-sm leading-5 text-muted">
             Print or share a PDF of this month — handy to paste into ChatGPT / Claude for
             advice on where to save and what to cut.
-          </Text>
+          </AppText>
           <Button
             variant="secondary"
             loading={exporting}
@@ -145,7 +153,7 @@ export default function Insights() {
         <Section title="Last 6 months">
           <Card>
             <MonthBars points={months} currency={currency} activeMonthKey={monthKey} />
-            <View className="mt-4 flex-row gap-3 border-t border-gray-100 pt-4">
+            <View className="mt-4 flex-row gap-3 border-t border-hairline pt-4">
               <Stat label="Monthly average" value={formatMoney(monthAverage, currency)} />
               <Stat label="Per day this month" value={formatMoney(averagePerDay, currency)} />
             </View>
@@ -168,13 +176,13 @@ export default function Insights() {
                   <View className="flex-row items-center gap-3">
                     <CategoryBadge categoryId={category.categoryId} size={34} />
                     <View className="flex-1">
-                      <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
+                      <AppText className="text-sm font-semibold text-ink" numberOfLines={1}>
                         {category.label}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
+                      </AppText>
+                      <AppText className="text-xs text-muted">
                         {category.count} {category.count === 1 ? "entry" : "entries"} ·{" "}
                         {Math.round(category.share * 100)}%
-                      </Text>
+                      </AppText>
                     </View>
                     <Money amount={category.total} currency={currency} />
                   </View>
@@ -197,15 +205,15 @@ export default function Insights() {
                   <View className="flex-row items-center gap-3">
                     <Avatar name={entry.member.name} color={entry.member.color} size="sm" />
                     <View className="flex-1">
-                      <Text className="text-sm font-semibold text-gray-900">
+                      <AppText className="text-sm font-semibold text-ink">
                         {entry.member.isSelf ? "You" : entry.member.name}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
+                      </AppText>
+                      <AppText className="text-xs text-muted">
                         {entry.earned > 0
                           ? `${formatMoney(entry.earned, currency, { compact: true })} in · `
                           : ""}
                         {entry.count} {entry.count === 1 ? "entry" : "entries"}
-                      </Text>
+                      </AppText>
                     </View>
                     <Money amount={entry.spent} currency={currency} />
                   </View>
@@ -244,24 +252,24 @@ export default function Insights() {
                 <Pressable
                   key={view.id}
                   onPress={() => router.push({ pathname: "/entry", params: { id: view.id } })}
-                  className={`active:bg-gray-50 ${
-                    index === biggest.length - 1 ? "" : "border-b border-gray-100"
+                  className={`active:bg-subtle ${
+                    index === biggest.length - 1 ? "" : "border-b border-hairline"
                   }`}
                 >
                   <View className="flex-row items-center gap-3 px-5 py-3.5">
-                    <Text className="w-4 text-sm font-bold text-gray-300">{index + 1}</Text>
+                    <AppText className="w-4 text-sm font-bold text-faint">{index + 1}</AppText>
                     <CategoryBadge categoryId={view.category_id} size={34} />
                     <View className="flex-1">
-                      <Text
-                        className="text-sm font-semibold text-gray-900"
+                      <AppText
+                        className="text-sm font-semibold text-ink"
                         numberOfLines={1}
                       >
                         {view.note?.trim() || view.memberLabel}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
+                      </AppText>
+                      <AppText className="text-xs text-muted">
                         {shortWhenLabel(view.occurred_at)}
                         {isShared ? ` · ${view.memberLabel}` : ""}
-                      </Text>
+                      </AppText>
                     </View>
                     <Money amount={view.amount} currency={currency} />
                   </View>
@@ -286,13 +294,13 @@ function Stat({
 }) {
   return (
     <View className="flex-1">
-      <Text className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+      <AppText className="text-[11px] font-bold uppercase tracking-wider text-faint">
         {label}
-      </Text>
-      <Text className="mt-1 text-lg font-bold tracking-tight tabular-nums text-gray-900">
+      </AppText>
+      <AppText className="mt-1 text-lg font-bold tracking-tight tabular-nums text-ink">
         {value}
-      </Text>
-      {hint ? <Text className="text-xs text-gray-400">{hint}</Text> : null}
+      </AppText>
+      {hint ? <AppText className="text-xs text-faint">{hint}</AppText> : null}
     </View>
   );
 }

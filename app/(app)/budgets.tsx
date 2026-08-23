@@ -35,9 +35,11 @@ import {
   useTransactions,
 } from "@/lib/queries";
 import { useScopeLabel } from "@/lib/scope";
+import { useThemeColors } from "@/lib/theme";
 import { PlusIcon, TargetIcon, TrashIcon } from "phosphor-react-native";
 import React, { useMemo, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Alert, Pressable, View } from "react-native";
 import type { BudgetStatus } from "@/types/finance";
 
 const HEALTH_COLORS = {
@@ -50,6 +52,7 @@ export default function Budgets() {
   const { monthKey } = useMonth();
   const currency = useCurrency();
   const ledger = useScopeLabel();
+  const colors = useThemeColors();
 
   const budgets = useBudgets();
   const transactions = useTransactions(monthKey);
@@ -179,9 +182,9 @@ export default function Budgets() {
                 <Card>
                   <View className="flex-row items-end justify-between">
                     <View>
-                      <Text className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                      <AppText className="text-[11px] font-semibold tracking-wide text-muted">
                         Budgeted this month
-                      </Text>
+                      </AppText>
                       <Money
                         amount={totalSpent}
                         currency={currency}
@@ -189,20 +192,20 @@ export default function Budgets() {
                         className="mt-1"
                       />
                     </View>
-                    <Text className="text-sm text-gray-500">
+                    <AppText className="text-[14px] text-muted">
                       of {formatMoney(totalLimit, currency)}
-                    </Text>
+                    </AppText>
                   </View>
                   <ProgressBar
                     ratio={totalLimit === 0 ? 0 : totalSpent / totalLimit}
-                    color={totalSpent > totalLimit ? "#e02020" : "#1e3a5f"}
+                    color={totalSpent > totalLimit ? colors.negative : colors.brand}
                     className="mt-3"
                     height={10}
                   />
                   {daysRemaining > 0 ? (
-                    <Text className="mt-2 text-xs text-gray-400">
+                    <AppText className="mt-2 text-[12px] text-faint">
                       {daysRemaining} days left in {monthLabel(monthKey)}
-                    </Text>
+                    </AppText>
                   ) : null}
                 </Card>
               ) : null}
@@ -216,27 +219,27 @@ export default function Budgets() {
                           {status.categoryId ? (
                             <CategoryBadge categoryId={status.categoryId} size={40} />
                           ) : (
-                            <IconTile color="#1e3a5f">
-                              <TargetIcon size={20} color="#1e3a5f" weight="duotone" />
+                            <IconTile color={colors.brand}>
+                              <TargetIcon size={20} color={colors.brand} weight="duotone" />
                             </IconTile>
                           )}
 
                           <View className="flex-1">
-                            <Text className="text-base font-bold tracking-tight text-gray-900">
+                            <AppText className="text-[16px] font-semibold tracking-tight text-ink">
                               {status.label}
-                            </Text>
-                            <Text className="mt-0.5 text-sm text-gray-500">
+                            </AppText>
+                            <AppText className="mt-0.5 text-[13px] text-muted">
                               {formatMoney(status.spent, currency)} of{" "}
                               {formatMoney(status.limit, currency)}
-                            </Text>
+                            </AppText>
                           </View>
 
-                          <Text
+                          <AppText
                             className="text-sm font-bold tabular-nums"
                             style={{ color: HEALTH_COLORS[status.health] }}
                           >
                             {formatPercent(status.ratio)}
-                          </Text>
+                          </AppText>
                         </View>
 
                         <ProgressBar
@@ -246,10 +249,10 @@ export default function Budgets() {
                           height={8}
                         />
 
-                        <Text
+                        <AppText
                           className={cn(
-                            "mt-2 text-xs",
-                            status.health === "over" ? "text-red-500" : "text-gray-400",
+                            "mt-2 text-[12px]",
+                            status.health === "over" ? "text-negative" : "text-faint",
                           )}
                         >
                           {status.remaining < 0
@@ -257,7 +260,7 @@ export default function Budgets() {
                             : daysRemaining > 0
                               ? `${formatMoney(status.remaining, currency)} left · ${formatMoney(status.dailyAllowance, currency, { compact: true })} a day`
                               : `${formatMoney(status.remaining, currency)} unspent`}
-                        </Text>
+                        </AppText>
                       </Card>
                     </Pressable>
                   ))}
@@ -294,27 +297,30 @@ export default function Budgets() {
           <Pressable
             onPress={() => !editing && setCategoryOpen(true)}
             className={cn(
-              "flex-row items-center gap-3 rounded-2xl border border-gray-200/60 bg-gray-50 px-4 py-3",
-              !editing && "active:bg-gray-100",
+              "will-change-pressable flex-row items-center gap-3 rounded-2xl px-4 py-3",
+              !editing && "active:opacity-80",
             )}
+            style={{ backgroundColor: colors.subtle }}
           >
             {categoryId ? (
               <CategoryBadge categoryId={categoryId} size={40} />
             ) : (
-              <IconTile color="#1e3a5f">
-                <TargetIcon size={20} color="#1e3a5f" weight="duotone" />
+              <IconTile color={colors.brand}>
+                <TargetIcon size={20} color={colors.brand} weight="duotone" />
               </IconTile>
             )}
             <View className="flex-1">
-              <Text className="text-xs font-bold uppercase tracking-wider text-gray-500">
+              <AppText className="text-[11px] font-semibold tracking-wide" style={{ color: colors.muted }}>
                 Applies to
-              </Text>
-              <Text className="mt-0.5 text-base font-semibold text-gray-900">
+              </AppText>
+              <AppText className="mt-0.5 text-[16px] font-semibold" style={{ color: colors.ink }}>
                 {categoryId ? categoryName(categoryId) : "Everything"}
-              </Text>
+              </AppText>
             </View>
             {!editing ? (
-              <Text className="text-sm font-semibold text-navy-500">Change</Text>
+              <AppText className="text-[13px] font-semibold" style={{ color: colors.brand }}>
+                Change
+              </AppText>
             ) : null}
           </Pressable>
 
@@ -326,9 +332,9 @@ export default function Budgets() {
             keyboardType="decimal-pad"
             autoFocus={!editing}
             leadingNode={
-              <Text className="text-base font-bold text-gray-400">
+              <AppText className="text-base font-bold" style={{ color: colors.faint }}>
                 {currencySymbol(currency)}
-              </Text>
+              </AppText>
             }
           />
 
@@ -346,8 +352,8 @@ export default function Budgets() {
           description="One ceiling for all spending"
           selected={categoryId === null}
           leading={
-            <IconTile color="#1e3a5f">
-              <TargetIcon size={20} color="#1e3a5f" weight="duotone" />
+            <IconTile color={colors.brand}>
+              <TargetIcon size={20} color={colors.brand} weight="duotone" />
             </IconTile>
           }
           onPress={() => {

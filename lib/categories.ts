@@ -38,7 +38,12 @@ export type CategoryIcon =
   | "transfer"
   | "cash"
   | "snack"
-  | "tag";
+  | "tag"
+  | "handshake"
+  | "plant"
+  | "chart"
+  | "wrench"
+  | "package";
 
 export interface Category {
   id: string;
@@ -73,6 +78,9 @@ export const CATEGORIES: Category[] = [
   { id: "shopping", label: "Shopping", icon: "bag", color: "#f472b6", applies: "expense" },
   { id: "personal", label: "Personal care", icon: "person", color: "#14b8a6", applies: "expense" },
   { id: "household", label: "Household goods", icon: "tools", color: "#a16207", applies: "expense" },
+  { id: "materials", label: "Materials & supplies", icon: "package", color: "#0f766e", applies: "expense" },
+  { id: "business_expense", label: "Business costs", icon: "store", color: "#1d4ed8", applies: "expense" },
+  { id: "project", label: "Project / build", icon: "wrench", color: "#7c3aed", applies: "expense" },
   { id: "savings", label: "Savings & chama", icon: "piggy", color: "#166b3f", applies: "expense" },
   { id: "loan", label: "Loan / Fuliza", icon: "coins", color: "#9b0c0c", applies: "expense" },
   { id: "fees", label: "Transaction fees", icon: "receipt", color: "#6b7280", applies: "expense" },
@@ -80,12 +88,23 @@ export const CATEGORIES: Category[] = [
   { id: "gifts", label: "Gifts & giving", icon: "gift", color: "#fb7185", applies: "expense" },
   { id: "other", label: "Other (specify)", icon: "tag", color: "#9ca3af", applies: "expense" },
 
-  // ── Income ────────────────────────────────────────────────────────────────
-  { id: "salary", label: "Salary", icon: "briefcase", color: "#1f9155", applies: "income" },
-  { id: "business", label: "Business / Pochi", icon: "store", color: "#2a5298", applies: "income" },
+  // ── Income (why money was received) ───────────────────────────────────────
+  { id: "salary", label: "Salary / wages", icon: "briefcase", color: "#1f9155", applies: "income" },
+  { id: "job_done", label: "Job / gig done", icon: "wrench", color: "#15803d", applies: "income" },
+  { id: "freelance", label: "Freelance / client", icon: "handshake", color: "#0f766e", applies: "income" },
+  { id: "business", label: "Business / sales", icon: "store", color: "#2a5298", applies: "income" },
+  { id: "commission", label: "Commission", icon: "chart", color: "#2563eb", applies: "income" },
+  { id: "bonus", label: "Bonus / tip", icon: "coins", color: "#ca8a04", applies: "income" },
+  { id: "transport_in", label: "Transport (received)", icon: "bus", color: "#5480bf", applies: "income" },
+  { id: "groceries_in", label: "Groceries (received)", icon: "basket", color: "#3db077", applies: "income" },
+  { id: "rent_in", label: "Rent contribution", icon: "house", color: "#7e9fd0", applies: "income" },
+  { id: "allowance", label: "Allowance / upkeep", icon: "person", color: "#14b8a6", applies: "income" },
+  { id: "farming", label: "Farming / produce", icon: "plant", color: "#65a30d", applies: "income" },
+  { id: "investment", label: "Investment return", icon: "chart", color: "#4f46e5", applies: "income" },
+  { id: "loan_in", label: "Loan received", icon: "coins", color: "#b45309", applies: "income" },
   { id: "refund", label: "Refund", icon: "refund", color: "#0d9488", applies: "income" },
-  { id: "gift_in", label: "Money received", icon: "gift", color: "#65a30d", applies: "income" },
-  { id: "other_income", label: "Other income (specify)", icon: "coins", color: "#84cc16", applies: "income" },
+  { id: "gift_in", label: "Gift / family send", icon: "gift", color: "#65a30d", applies: "income" },
+  { id: "other_income", label: "Other income (specify)", icon: "tag", color: "#84cc16", applies: "income" },
 
   // ── Transfers ─────────────────────────────────────────────────────────────
   { id: "transfer", label: "Transfer", icon: "transfer", color: "#64748b", applies: "transfer" },
@@ -128,7 +147,11 @@ export function categoryNeedsDetail(categoryId: string): boolean {
   return (
     categoryId === "other" ||
     categoryId === "other_income" ||
-    categoryId === "street_food"
+    categoryId === "street_food" ||
+    categoryId === "job_done" ||
+    categoryId === "freelance" ||
+    categoryId === "materials" ||
+    categoryId === "project"
   );
 }
 
@@ -141,7 +164,12 @@ export function categoryDetailPlaceholder(categoryId: string): string {
   if (categoryId === "street_food") {
     return "e.g. Smokies at stage, chapati CBD, boiled egg snacks";
   }
+  if (categoryId === "job_done") return "e.g. Plumbing for Mama Njeri, wiring job";
+  if (categoryId === "freelance") return "e.g. Logo design for…, consulting";
   if (categoryId === "other_income") return "e.g. Side hustle, refund from…";
+  if (categoryId === "materials" || categoryId === "project") {
+    return "e.g. Cement bags, timber, paint for…";
+  }
   return "e.g. Church offering, chama, school trip";
 }
 

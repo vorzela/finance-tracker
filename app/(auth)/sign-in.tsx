@@ -14,7 +14,8 @@ import { getErrorMessage } from "@/lib/error";
 import { Link } from "expo-router";
 import { ArrowRightIcon, EnvelopeIcon } from "phosphor-react-native";
 import React, { useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Alert, Pressable, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -84,12 +85,12 @@ export default function SignIn() {
       <View className="items-center gap-5">
         <Logo size={80} />
         <View className="gap-2">
-          <Text className="text-center text-3xl font-bold tracking-tight text-white">
+          <AppText className="text-center text-3xl font-bold tracking-tight text-white">
             Welcome back
-          </Text>
-          <Text className="text-center text-base text-navy-200">
+          </AppText>
+          <AppText className="text-center text-base text-navy-200">
             Pick up where the two of you left off.
-          </Text>
+          </AppText>
         </View>
       </View>
 
@@ -128,18 +129,18 @@ export default function SignIn() {
           </Button>
 
           <Pressable onPress={resetPassword} className="items-center py-1">
-            <Text className="text-sm font-semibold text-gray-500">
+            <AppText className="text-sm font-semibold text-gray-500">
               Forgot your password?
-            </Text>
+            </AppText>
           </Pressable>
         </View>
       </View>
 
       <View className="mt-auto flex-row items-center justify-center gap-1.5 pt-8">
-        <Text className="text-base text-navy-200">New here?</Text>
+        <AppText className="text-base text-navy-200">New here?</AppText>
         <Link href="/(auth)/sign-up" asChild>
           <Pressable hitSlop={8}>
-            <Text className="text-base font-bold text-white">Create an account</Text>
+            <AppText className="text-base font-bold text-white">Create an account</AppText>
           </Pressable>
         </Link>
       </View>

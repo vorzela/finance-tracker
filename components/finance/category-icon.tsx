@@ -17,6 +17,7 @@ import {
   BasketIcon,
   BriefcaseIcon,
   BusIcon,
+  ChartLineUpIcon,
   CoinsIcon,
   DeviceMobileIcon,
   DropIcon,
@@ -26,9 +27,12 @@ import {
   GasPumpIcon,
   GiftIcon,
   GraduationCapIcon,
+  HandshakeIcon,
   HouseIcon,
+  LeafIcon,
   LightningIcon,
   MoneyIcon,
+  PackageIcon,
   PiggyBankIcon,
   PopcornIcon,
   ReceiptIcon,
@@ -37,6 +41,7 @@ import {
   ToolboxIcon,
   UserIcon,
   WalletIcon,
+  WrenchIcon,
   type Icon,
   type IconProps,
 } from "phosphor-react-native";
@@ -69,6 +74,11 @@ const GLYPHS: Record<CategoryIcon, Icon> = {
   transfer: ArrowsLeftRightIcon,
   cash: WalletIcon,
   tag: TagIcon,
+  handshake: HandshakeIcon,
+  plant: LeafIcon,
+  chart: ChartLineUpIcon,
+  wrench: WrenchIcon,
+  package: PackageIcon,
 };
 
 export interface CategoryIconProps {

@@ -11,7 +11,8 @@
  */
 
 import { supabase } from "@/lib/supabase";
-import { addMonths, currentMonthKey, monthRange } from "@/lib/date";
+import { addMonths, currentMonthKey, monthKeyOf, monthRange } from "@/lib/date";
+import { fillMonthHistory } from "@/lib/analytics";
 import {
   scopeGroupId,
   scopeKey,
@@ -21,6 +22,7 @@ import {
   type DebtDraft,
   type GroupSummary,
   type Member,
+  type MonthPoint,
   type RecurringDraft,
   type Scope,
   type TransactionDraft,
@@ -33,8 +35,11 @@ import type {
   MemberRole,
   ProfileRow,
   RecurringEntryRow,
+  MessageRow,
   TransactionRow,
 } from "@/types/database";
+
+export const HISTORY_MONTHS = 6;
 
 // ── Query keys ──────────────────────────────────────────────────────────────
 
@@ -53,6 +58,11 @@ export const keys = {
     ["transactions", scopeKey(scope), monthKey] as const,
   history: (scope: Scope, monthKey: string, months: number) =>
     ["history", scopeKey(scope), monthKey, months] as const,
+  monthHistory: (scope: Scope, monthKey: string, months: number) =>
+    ["month-history", scopeKey(scope), monthKey, months] as const,
+  home: (scope: Scope, monthKey: string) =>
+    ["home", scopeKey(scope), monthKey] as const,
+  messages: (groupId: string) => ["messages", groupId] as const,
   /** Prefix used to invalidate everything belonging to one ledger. */
   scopeRoot: (scope: Scope) => scopeKey(scope),
 };
@@ -61,8 +71,10 @@ export const keys = {
 export function scopeCaches(scope: Scope): (readonly unknown[])[] {
   const key = scopeKey(scope);
   return [
+    ["home", key],
     ["transactions", key],
     ["history", key],
+    ["month-history", key],
     ["balances", key],
     ["member-balances", key],
     // A transaction can be a debt repayment, which moves its balance.
@@ -94,6 +106,38 @@ function fail(error: { message: string; code?: string }, action: string): never 
     );
   }
   throw new Error(message || `Couldn't ${action}.`);
+}
+
+function isMissingRpc(error: { message: string; code?: string }, name: string): boolean {
+  const code = error.code ?? "";
+  const message = (error.message ?? "").toLowerCase();
+  return (
+    code === "PGRST202" ||
+    code === "42883" ||
+    ((message.includes(name.toLowerCase()) || message.includes("schema cache")) &&
+      (message.includes("does not exist") || message.includes("could not find")))
+  );
+}
+
+function deviceTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+function asNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : String(value ?? "");
 }
 
 // ── Profile ─────────────────────────────────────────────────────────────────
@@ -342,18 +386,22 @@ export async function createAccount(
   scope: Scope,
   userId: string,
   draft: AccountDraft,
+  clientId?: string,
 ): Promise<void> {
   const openingBalance = Math.max(0, Math.round(draft.openingBalance));
+  const row = {
+    owner_id: userId,
+    group_id: scopeGroupId(scope),
+    name: draft.name.trim(),
+    type: draft.type,
+    opening_balance: openingBalance,
+    color: draft.color,
+  };
   const { error } = await supabase()
     .from("accounts")
-    .insert({
-      owner_id: userId,
-      group_id: scopeGroupId(scope),
-      name: draft.name.trim(),
-      type: draft.type,
-      opening_balance: openingBalance,
-      color: draft.color,
-    });
+    .insert(
+      (clientId ? { ...row, id: clientId } : row) as import("@/types/database").Database["public"]["Tables"]["accounts"]["Insert"],
+    );
 
   if (error) fail(error, "add the account");
 }
@@ -422,14 +470,19 @@ export interface HistoryPoint {
   user_id: string;
 }
 
-/** Trimmed rows over a window of months, for the trend chart. */
+function historyWindow(monthKey: string, months: number) {
+  const { from } = monthRange(addMonths(monthKey, -(months - 1)));
+  const { until } = monthRange(monthKey);
+  return { from, until };
+}
+
+/** Trimmed rows over a window of months. Used only when month_history is missing. */
 export async function fetchHistory(
   scope: Scope,
   monthKey: string,
   months: number,
 ): Promise<HistoryPoint[]> {
-  const { from } = monthRange(addMonths(monthKey, -(months - 1)));
-  const { until } = monthRange(monthKey);
+  const { from, until } = historyWindow(monthKey, months);
   const groupId = scopeGroupId(scope);
 
   const query = supabase()
@@ -446,6 +499,196 @@ export async function fetchHistory(
   return (data ?? []) as HistoryPoint[];
 }
 
+function aggregateHistoryPoints(points: HistoryPoint[]): MonthPoint[] {
+  const buckets = new Map<string, MonthPoint>();
+  for (const point of points) {
+    const key = monthKeyOf(point.occurred_at);
+    const bucket = buckets.get(key) ?? { monthKey: key, spent: 0, earned: 0 };
+    bucket.spent += point.fee_amount;
+    if (point.kind === "expense") bucket.spent += point.amount;
+    else if (point.kind === "income") bucket.earned += point.amount;
+    buckets.set(key, bucket);
+  }
+  return [...buckets.values()];
+}
+
+function parseMonthPoint(raw: Record<string, unknown>): MonthPoint {
+  return {
+    monthKey: asString(raw.month_key ?? raw.monthKey),
+    spent: asNumber(raw.spent),
+    earned: asNumber(raw.earned),
+  };
+}
+
+/** Aggregated spend/income per month. One small payload instead of every row. */
+export async function fetchMonthHistory(
+  scope: Scope,
+  monthKey: string,
+  months: number = HISTORY_MONTHS,
+): Promise<MonthPoint[]> {
+  const { from, until } = historyWindow(monthKey, months);
+  const { data, error } = await supabase().rpc("month_history", {
+    p_group_id: scopeGroupId(scope),
+    p_from: from,
+    p_until: until,
+    p_tz: deviceTimeZone(),
+  });
+
+  if (error) {
+    if (!isMissingRpc(error, "month_history")) fail(error, "load your history");
+    const raw = await fetchHistory(scope, monthKey, months);
+    return fillMonthHistory(aggregateHistoryPoints(raw), monthKey, months);
+  }
+
+  return fillMonthHistory((data ?? []).map((row) => parseMonthPoint(row)), monthKey, months);
+}
+
+export interface LedgerHome {
+  transactions: TransactionRow[];
+  history: MonthPoint[];
+  accounts: Account[];
+  budgets: BudgetRow[];
+  members: Member[];
+}
+
+function parseTransaction(raw: Record<string, unknown>): TransactionRow {
+  return {
+    id: asString(raw.id),
+    user_id: asString(raw.user_id),
+    group_id: raw.group_id == null ? null : asString(raw.group_id),
+    kind: asString(raw.kind) as TransactionRow["kind"],
+    amount: asNumber(raw.amount),
+    fee_amount: asNumber(raw.fee_amount),
+    category_id: asString(raw.category_id) || "other",
+    account_id: raw.account_id == null ? null : asString(raw.account_id),
+    to_account_id: raw.to_account_id == null ? null : asString(raw.to_account_id),
+    debt_id: raw.debt_id == null ? null : asString(raw.debt_id),
+    note: raw.note == null ? null : asString(raw.note),
+    occurred_at: asString(raw.occurred_at),
+    created_at: asString(raw.created_at),
+    updated_at: asString(raw.updated_at),
+  };
+}
+
+function parseAccount(raw: Record<string, unknown>): Account {
+  return {
+    id: asString(raw.id),
+    owner_id: asString(raw.owner_id),
+    group_id: raw.group_id == null ? null : asString(raw.group_id),
+    name: asString(raw.name),
+    type: asString(raw.type) as Account["type"],
+    opening_balance: asNumber(raw.opening_balance),
+    color: asString(raw.color) || "#2a5298",
+    archived: Boolean(raw.archived),
+    created_at: asString(raw.created_at),
+    updated_at: asString(raw.updated_at),
+    balance: asNumber(raw.balance ?? raw.opening_balance),
+  };
+}
+
+function parseBudget(raw: Record<string, unknown>): BudgetRow {
+  return {
+    id: asString(raw.id),
+    user_id: asString(raw.user_id),
+    group_id: raw.group_id == null ? null : asString(raw.group_id),
+    category_id: raw.category_id == null ? null : asString(raw.category_id),
+    limit_amount: asNumber(raw.limit_amount),
+    month: raw.month == null ? null : asString(raw.month),
+    created_at: asString(raw.created_at),
+    updated_at: asString(raw.updated_at),
+  };
+}
+
+function parseMember(raw: Record<string, unknown>): Member {
+  return {
+    id: asString(raw.id),
+    name: asString(raw.name) || "Member",
+    color: asString(raw.color) || "#6b7280",
+    role: asString(raw.role) === "owner" ? "owner" : "member",
+    isSelf: Boolean(raw.is_self),
+    avatarUrl: raw.avatar_url == null ? null : asString(raw.avatar_url),
+  };
+}
+
+function parseLedgerHome(raw: Record<string, unknown>, months: number, monthKey: string): LedgerHome {
+  const transactions = Array.isArray(raw.transactions)
+    ? (raw.transactions as Record<string, unknown>[]).map(parseTransaction)
+    : [];
+  const historyRaw = Array.isArray(raw.history)
+    ? (raw.history as Record<string, unknown>[]).map(parseMonthPoint)
+    : [];
+  const accounts = Array.isArray(raw.accounts)
+    ? (raw.accounts as Record<string, unknown>[]).map(parseAccount)
+    : [];
+  const budgets = Array.isArray(raw.budgets)
+    ? (raw.budgets as Record<string, unknown>[]).map(parseBudget)
+    : [];
+  const members = Array.isArray(raw.members)
+    ? (raw.members as Record<string, unknown>[]).map(parseMember)
+    : [];
+
+  return {
+    transactions,
+    history: fillMonthHistory(historyRaw, monthKey, months),
+    accounts,
+    budgets,
+    members,
+  };
+}
+
+async function fetchLedgerHomeFallback(
+  scope: Scope,
+  userId: string,
+  monthKey: string,
+  months: number,
+): Promise<LedgerHome> {
+  const [transactions, history, accountRows, balances, budgets, members] = await Promise.all([
+    fetchTransactions(scope, monthKey),
+    fetchMonthHistory(scope, monthKey, months),
+    fetchAccounts(scope),
+    fetchBalances(scope),
+    fetchBudgets(scope),
+    fetchMembers(scope, userId),
+  ]);
+
+  return {
+    transactions,
+    history,
+    accounts: withBalances(accountRows, balances),
+    budgets,
+    members,
+  };
+}
+
+/**
+ * Everything the dashboard (and the other tabs) need, in one round trip.
+ * Falls back to parallel reads if the project has not run the latest SQL yet.
+ */
+export async function fetchLedgerHome(
+  scope: Scope,
+  userId: string,
+  monthKey: string,
+  months: number = HISTORY_MONTHS,
+): Promise<LedgerHome> {
+  const { from, until } = monthRange(monthKey);
+  const { from: historyFrom } = monthRange(addMonths(monthKey, -(months - 1)));
+
+  const { data, error } = await supabase().rpc("ledger_home", {
+    p_group_id: scopeGroupId(scope),
+    p_from: from,
+    p_until: until,
+    p_history_from: historyFrom,
+    p_tz: deviceTimeZone(),
+  });
+
+  if (error) {
+    if (!isMissingRpc(error, "ledger_home")) fail(error, "load your ledger");
+    return fetchLedgerHomeFallback(scope, userId, monthKey, months);
+  }
+
+  return parseLedgerHome((data ?? {}) as Record<string, unknown>, months, monthKey);
+}
+
 export async function fetchTransaction(id: string): Promise<TransactionRow | null> {
   const { data, error } = await supabase()
     .from("transactions")
@@ -460,22 +703,26 @@ export async function fetchTransaction(id: string): Promise<TransactionRow | nul
 export async function createTransaction(
   scope: Scope,
   draft: TransactionDraft,
+  clientId?: string,
 ): Promise<void> {
+  const row = {
+    user_id: draft.userId,
+    group_id: scopeGroupId(scope),
+    kind: draft.kind,
+    amount: draft.amount,
+    fee_amount: draft.feeAmount,
+    category_id: draft.categoryId,
+    account_id: draft.accountId,
+    to_account_id: draft.kind === "transfer" ? draft.toAccountId : null,
+    debt_id: draft.debtId,
+    note: draft.note?.trim() || null,
+    occurred_at: draft.occurredAt,
+  };
   const { error } = await supabase()
     .from("transactions")
-    .insert({
-      user_id: draft.userId,
-      group_id: scopeGroupId(scope),
-      kind: draft.kind,
-      amount: draft.amount,
-      fee_amount: draft.feeAmount,
-      category_id: draft.categoryId,
-      account_id: draft.accountId,
-      to_account_id: draft.kind === "transfer" ? draft.toAccountId : null,
-      debt_id: draft.debtId,
-      note: draft.note?.trim() || null,
-      occurred_at: draft.occurredAt,
-    });
+    .insert(
+      (clientId ? { ...row, id: clientId } : row) as import("@/types/database").Database["public"]["Tables"]["transactions"]["Insert"],
+    );
 
   if (error) fail(error, "save the transaction");
 }
@@ -722,4 +969,55 @@ export async function postDueRecurring(): Promise<number> {
   const { data, error } = await supabase().rpc("post_due_recurring");
   if (error) fail(error, "post your monthly income and bills");
   return data ?? 0;
+}
+
+// ── Chat ────────────────────────────────────────────────────────────────────
+
+const MESSAGE_PAGE = 150;
+
+export async function fetchMessages(groupId: string): Promise<MessageRow[]> {
+  const { data, error } = await supabase()
+    .from("messages")
+    .select("*")
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: false })
+    .limit(MESSAGE_PAGE);
+
+  if (error) fail(error, "load the chat");
+  return [...(data ?? [])].reverse();
+}
+
+export async function sendMessage(
+  groupId: string,
+  userId: string,
+  body: string,
+  clientId?: string,
+): Promise<MessageRow> {
+  const trimmed = body.trim();
+  if (trimmed.length === 0) throw new Error("Type a message first.");
+  if (trimmed.length > 2000) throw new Error("That message is too long.");
+
+  const row = {
+    group_id: groupId,
+    user_id: userId,
+    body: trimmed,
+    ...(clientId ? { id: clientId } : {}),
+  };
+
+  const { data, error } = await supabase()
+    .from("messages")
+    .insert(row)
+    .select("*")
+    .single();
+
+  if (error) fail(error, "send the message");
+  return data;
+}
+
+export async function savePushToken(userId: string, token: string, platform: string): Promise<void> {
+  const { error } = await supabase().from("push_tokens").upsert(
+    { user_id: userId, token, platform, updated_at: new Date().toISOString() },
+    { onConflict: "user_id" },
+  );
+  if (error) fail(error, "save notification token");
 }

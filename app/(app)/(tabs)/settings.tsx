@@ -12,7 +12,7 @@ import { Sheet, SheetOption } from "@/components/ui/sheet";
 import { TAB_BAR_HEIGHT } from "@/components/ui/tab-bar";
 import { useAuth } from "@/lib/auth";
 import { currencySymbol } from "@/lib/currency";
-import { useAccounts, useProfile } from "@/lib/queries";
+import { useAccountRows, useProfile } from "@/lib/queries";
 import { useScope } from "@/lib/scope";
 import { THEME_OPTIONS, ACCENTS, FONT_OPTIONS, useAppearance } from "@/lib/theme";
 import Constants from "expo-constants";
@@ -20,6 +20,7 @@ import { Link, useRouter } from "expo-router";
 import {
   BriefcaseIcon,
   CaretRightIcon,
+  ChatCircleIcon,
   ChatTeardropTextIcon,
   CurrencyCircleDollarIcon,
   DatabaseIcon,
@@ -33,15 +34,17 @@ import {
   TextTIcon,
   UserIcon,
   WalletIcon,
+  ListChecksIcon,
 } from "phosphor-react-native";
 import React, { useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Alert, Pressable, View } from "react-native";
 
 export default function Settings() {
   const { signOut, user, source } = useAuth();
   const { data: profile } = useProfile();
   const { groups, scope, activeGroup } = useScope();
-  const { accounts } = useAccounts();
+  const { data: accounts = [] } = useAccountRows();
   const { schemePreference, setSchemePreference, accent, setAccent, font, setFont, italic, setItalic } =
     useAppearance();
   const router = useRouter();
@@ -74,7 +77,7 @@ export default function Settings() {
 
       <ScreenScroll bottomInset={TAB_BAR_HEIGHT + 24}>
         <Link href="/profile" asChild>
-          <Pressable>
+          <Pressable className="active:opacity-80">
             <Card className="flex-row items-center gap-4">
               <Avatar
                 name={profile?.display_name ?? "Me"}
@@ -83,20 +86,20 @@ export default function Settings() {
                 size="xl"
               />
               <View className="flex-1">
-                <Text
-                  className="text-xl font-bold tracking-tight text-ink"
+                <AppText
+                  className="text-[20px] font-bold tracking-tight text-ink"
                   numberOfLines={1}
                 >
                   {profile?.display_name ?? "Your profile"}
-                </Text>
-                <Text className="mt-0.5 text-sm text-muted" numberOfLines={1}>
+                </AppText>
+                <AppText className="mt-0.5 text-[13px] text-muted" numberOfLines={1}>
                   {user?.email}
-                </Text>
-                <Text className="mt-2 text-sm font-semibold text-brand">
-                  Edit name, colour and currency
-                </Text>
+                </AppText>
+                <AppText className="mt-2 text-[13px] font-semibold text-brand">
+                  Edit profile
+                </AppText>
               </View>
-              <CaretRightIcon size={18} color="#9aa9bd" weight="bold" />
+              <CaretRightIcon size={16} color="#aeaeb2" weight="bold" />
             </Card>
           </Pressable>
         </Link>
@@ -116,19 +119,39 @@ export default function Settings() {
                   : groups.map((group) => group.name).join(" · ")
               }
               chevron
-              last
+              last={groups.length === 0}
               onPress={() => router.push("/household")}
             />
+            {groups.length > 0 ? (
+              <Row
+                leading={
+                  <IconTile color="#2a5298">
+                    <ChatCircleIcon size={20} color="#2a5298" weight="duotone" />
+                  </IconTile>
+                }
+                title="Household chat"
+                subtitle={
+                  scope.kind !== "group"
+                    ? "Switch to a shared ledger to message"
+                    : (activeGroup?.memberCount ?? 0) >= 3
+                      ? "Group chat with everyone in this household"
+                      : "Message the other person in this household"
+                }
+                chevron
+                last
+                onPress={() => router.push("/chat" as never)}
+              />
+            ) : null}
           </Card>
-          <Text className="px-2 text-xs leading-5 text-faint">
+          <AppText className="px-2 text-xs leading-5 text-faint">
             Now viewing{" "}
-            <Text className="font-semibold text-muted">
+            <AppText className="font-semibold text-muted">
               {scope.kind === "personal"
                 ? "your personal ledger"
                 : (activeGroup?.name ?? "a shared ledger")}
-            </Text>
+            </AppText>
             . Switch from the button at the top of any screen.
-          </Text>
+          </AppText>
         </Section>
 
         <Section title="Money">
@@ -194,6 +217,17 @@ export default function Settings() {
             />
             <Row
               leading={
+                <IconTile color="#0f766e">
+                  <ListChecksIcon size={20} color="#0f766e" weight="duotone" />
+                </IconTile>
+              }
+              title="Plans & projects"
+              subtitle="Items needed, shopping, business planning"
+              chevron
+              onPress={() => router.push("/plans")}
+            />
+            <Row
+              leading={
                 <IconTile color="#6366f1">
                   <CurrencyCircleDollarIcon size={20} color="#6366f1" weight="duotone" />
                 </IconTile>
@@ -201,7 +235,7 @@ export default function Settings() {
               title="Currency"
               subtitle={`${profile?.currency_code ?? "KES"} · ${currencySymbol(profile?.currency_code ?? "KES")}`}
               value={
-                <Text className="text-sm font-semibold text-brand">Change</Text>
+                <AppText className="text-sm font-semibold text-brand">Change</AppText>
               }
               last
               onPress={() => router.push("/profile")}
@@ -298,12 +332,12 @@ export default function Settings() {
         <View className="items-center gap-1 pt-2">
           <View className="flex-row items-center gap-1.5">
             <UserIcon size={12} color="#9ca3af" />
-            <Text className="text-xs text-faint">
+            <AppText className="text-xs text-faint">
               {Constants.expoConfig?.name ?? "Duo Wallet"} v
               {Constants.expoConfig?.version ?? "1.0.0"}
-            </Text>
+            </AppText>
           </View>
-          <Text className="text-xs text-faint">A financial helper for people and couples.</Text>
+          <AppText className="text-xs text-faint">A financial helper for people and couples.</AppText>
         </View>
       </ScreenScroll>
 
@@ -336,7 +370,6 @@ export default function Settings() {
             }
             onPress={() => {
               setAccent(option.id);
-              setAccentOpen(false);
             }}
           />
         ))}

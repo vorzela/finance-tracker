@@ -8,7 +8,8 @@ import { Card, Section } from "@/components/ui/card";
 import { Header, Screen, ScreenScroll } from "@/components/ui/screen";
 import type { FaqItem, GuideSection } from "@/lib/legal";
 import React from "react";
-import { Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { View } from "react-native";
 
 export function DocScreen({
   title,
@@ -26,7 +27,7 @@ export function DocScreen({
         {sections.map((section) => (
           <Section key={section.title} title={section.title}>
             <Card>
-              <Text className="text-sm leading-6 text-muted">{section.body}</Text>
+              <AppText className="text-sm leading-6 text-muted">{section.body}</AppText>
             </Card>
           </Section>
         ))}
@@ -50,8 +51,8 @@ export function FaqScreen({
       <ScreenScroll>
         {items.map((item) => (
           <Card key={item.q} className="gap-2">
-            <Text className="text-base font-semibold text-ink">{item.q}</Text>
-            <Text className="text-sm leading-6 text-muted">{item.a}</Text>
+            <AppText className="text-base font-semibold text-ink">{item.q}</AppText>
+            <AppText className="text-sm leading-6 text-muted">{item.a}</AppText>
           </Card>
         ))}
         <View className="h-2" />

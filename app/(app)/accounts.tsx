@@ -28,7 +28,8 @@ import { useAccounts, useArchiveAccount, useCurrency, useSaveAccount } from "@/l
 import { useScopeLabel } from "@/lib/scope";
 import { PlusIcon, TrashIcon, WalletIcon } from "phosphor-react-native";
 import React, { useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Alert, Pressable, View } from "react-native";
 import type { AccountType } from "@/types/database";
 import type { Account } from "@/types/finance";
 
@@ -186,10 +187,10 @@ export default function Accounts() {
           ) : (
             <>
               <Card>
-                <Text className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                <AppText className="text-xs font-bold uppercase tracking-widest text-gray-400">
                   Total across {accounts.length}{" "}
                   {accounts.length === 1 ? "account" : "accounts"}
-                </Text>
+                </AppText>
                 <Money
                   amount={total}
                   currency={currency}
@@ -209,18 +210,18 @@ export default function Accounts() {
                             <Glyph size={22} color={account.color} weight="duotone" />
                           </IconTile>
                           <View className="flex-1">
-                            <Text
+                            <AppText
                               className="text-base font-bold tracking-tight text-gray-900"
                               numberOfLines={1}
                             >
                               {account.name}
-                            </Text>
-                            <Text className="mt-0.5 text-sm capitalize text-gray-500">
+                            </AppText>
+                            <AppText className="mt-0.5 text-sm capitalize text-gray-500">
                               {account.type}
                               {account.opening_balance !== 0
                                 ? ` · opened at ${formatMoney(account.opening_balance, currency, { compact: true })}`
                                 : ""}
-                            </Text>
+                            </AppText>
                           </View>
                           <Money
                             amount={account.balance}
@@ -271,9 +272,9 @@ export default function Accounts() {
           />
 
           <View className="gap-2">
-            <Text className="px-1 text-xs font-bold uppercase tracking-wider text-gray-500">
+            <AppText className="px-1 text-xs font-bold uppercase tracking-wider text-gray-500">
               Type
-            </Text>
+            </AppText>
             <Segmented options={TYPE_OPTIONS} value={type} onChange={setType} size="sm" />
           </View>
 
@@ -284,17 +285,17 @@ export default function Accounts() {
             onChangeText={setOpeningText}
             keyboardType="decimal-pad"
             leadingNode={
-              <Text className="text-base font-bold text-gray-400">
+              <AppText className="text-base font-bold text-gray-400">
                 {currencySymbol(currency)}
-              </Text>
+              </AppText>
             }
             hint="Minimum 0. Live balance = opening + transactions (can go negative)."
           />
 
           <View className="gap-2">
-            <Text className="px-1 text-xs font-bold uppercase tracking-wider text-gray-500">
+            <AppText className="px-1 text-xs font-bold uppercase tracking-wider text-gray-500">
               Colour
-            </Text>
+            </AppText>
             <View className="flex-row flex-wrap gap-2.5">
               {COLORS.map((option) => (
                 <Pressable

@@ -39,7 +39,8 @@ import {
   TrashIcon,
 } from "phosphor-react-native";
 import React, { useMemo, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Alert, Pressable, View } from "react-native";
 import type { DebtDirection } from "@/types/database";
 import type { DebtView } from "@/types/finance";
 
@@ -179,15 +180,15 @@ export default function Debts() {
             <>
               <View className="flex-row gap-3">
                 <Card className="flex-1">
-                  <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+                  <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
                     You owe
-                  </Text>
+                  </AppText>
                   <Money amount={iOwe} currency={currency} size="lg" className="mt-1 text-negative" />
                 </Card>
                 <Card className="flex-1">
-                  <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+                  <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
                     Owed to you
-                  </Text>
+                  </AppText>
                   <Money
                     amount={owedToMe}
                     currency={currency}
@@ -209,20 +210,20 @@ export default function Debts() {
                     >
                       <View className="flex-row items-start justify-between gap-3">
                         <View className="flex-1">
-                          <Text className="text-base font-semibold text-ink">{debt.name}</Text>
-                          <Text className="mt-0.5 text-sm text-muted">
+                          <AppText className="text-base font-semibold text-ink">{debt.name}</AppText>
+                          <AppText className="mt-0.5 text-sm text-muted">
                             {debt.direction === "owed_by_me" ? "You owe" : "Owes you"}
                             {debt.counterparty ? ` · ${debt.counterparty}` : ""}
                             {debt.due_on ? ` · due ${shortDayLabel(debt.due_on)}` : ""}
-                          </Text>
+                          </AppText>
                         </View>
                         <Money amount={debt.balance} currency={currency} />
                       </View>
                       <ProgressBar ratio={debt.progress} className="mt-3" height={6} />
-                      <Text className="mt-1.5 text-xs text-faint">
+                      <AppText className="mt-1.5 text-xs text-faint">
                         {formatMoney(debt.paid, currency)} of{" "}
                         {formatMoney(debt.principal, currency)} paid
-                      </Text>
+                      </AppText>
                       <View className="mt-3 flex-row gap-2">
                         <Pressable
                           onPress={() =>
@@ -231,22 +232,22 @@ export default function Debts() {
                           className="flex-row items-center gap-1.5 rounded-full bg-positive-soft px-3 py-1.5"
                         >
                           <CheckCircleIcon size={14} color="#1f9155" weight="bold" />
-                          <Text className="text-xs font-semibold text-positive">Mark settled</Text>
+                          <AppText className="text-xs font-semibold text-positive">Mark settled</AppText>
                         </Pressable>
                         <Pressable
                           onPress={() => confirmDelete(debt)}
                           className="flex-row items-center gap-1.5 rounded-full bg-negative-soft px-3 py-1.5"
                         >
                           <TrashIcon size={14} color="#e02020" weight="bold" />
-                          <Text className="text-xs font-semibold text-negative">Remove</Text>
+                          <AppText className="text-xs font-semibold text-negative">Remove</AppText>
                         </Pressable>
                       </View>
                     </Pressable>
                   ))}
                   {open.length === 0 ? (
-                    <Text className="px-5 py-6 text-center text-sm text-muted">
+                    <AppText className="px-5 py-6 text-center text-sm text-muted">
                       Nothing open right now.
-                    </Text>
+                    </AppText>
                   ) : null}
                 </Card>
               </Section>
@@ -264,8 +265,8 @@ export default function Debts() {
                           index === closed.length - 1 ? "" : "border-b border-hairline"
                         }`}
                       >
-                        <Text className="text-sm text-muted">{debt.name}</Text>
-                        <Text className="text-xs font-semibold text-positive">Reopen</Text>
+                        <AppText className="text-sm text-muted">{debt.name}</AppText>
+                        <AppText className="text-xs font-semibold text-positive">Reopen</AppText>
                       </Pressable>
                     ))}
                   </Card>

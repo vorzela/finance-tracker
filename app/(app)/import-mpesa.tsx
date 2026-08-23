@@ -54,7 +54,8 @@ import {
   PlugsIcon,
 } from "phosphor-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Platform, Pressable, View } from "react-native";
 import type { Account } from "@/types/finance";
 import type { TransactionKind } from "@/types/database";
 
@@ -300,11 +301,11 @@ export default function ImportMpesa() {
         {error ? <ErrorNote message={error} /> : null}
 
         <Card className="gap-3">
-          <Text className="text-sm leading-5 text-muted">
+          <AppText className="text-sm leading-5 text-muted">
             Fuliza is debt (overdraft). M-Shwari and Ziidi are savings. Pochi la
             Biashara is business. We record the SMS by code — you say what each
             one was for before it hits the ledger.
-          </Text>
+          </AppText>
           <Button
             variant="secondary"
             onPress={() => router.push("/entry")}
@@ -318,10 +319,10 @@ export default function ImportMpesa() {
           <Section title="From your inbox">
             <Card>
               {!native ? (
-                <Text className="text-sm text-muted">
+                <AppText className="text-sm text-muted">
                   Rebuild the app to enable inbox reading. Paste or add manually
                   still works.
-                </Text>
+                </AppText>
               ) : permission !== true ? (
                 <EmptyState
                   icon={<PlugsIcon size={28} color="#1e3a5f" weight="duotone" />}
@@ -339,11 +340,11 @@ export default function ImportMpesa() {
                   }
                 />
               ) : visibleMessages.length === 0 ? (
-                <Text className="text-sm text-muted">
+                <AppText className="text-sm text-muted">
                   {loadingSms
                     ? "Reading inbox…"
                     : "No new wallet SMS (or already imported). Paste below or add manually."}
-                </Text>
+                </AppText>
               ) : (
                 <View className="gap-3">
                   {visibleMessages.map((message) => (
@@ -353,28 +354,28 @@ export default function ImportMpesa() {
                       className="rounded-2xl border border-hairline bg-subtle px-4 py-3 active:opacity-80"
                     >
                       <View className="flex-row items-center justify-between gap-2">
-                        <Text className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
+                        <AppText className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
                           {message.parsed.note}
-                        </Text>
-                        <Text className="text-[10px] font-bold uppercase tracking-wider text-faint">
+                        </AppText>
+                        <AppText className="text-[10px] font-bold uppercase tracking-wider text-faint">
                           {productLabel(message.parsed.product)}
-                        </Text>
+                        </AppText>
                       </View>
-                      <Text className="mt-1 text-xs text-brand">
+                      <AppText className="mt-1 text-xs text-brand">
                         {productHint(message.parsed.product)}
-                      </Text>
+                      </AppText>
                       {message.parsed.reference ? (
-                        <Text className="mt-1 text-xs font-semibold text-muted">
+                        <AppText className="mt-1 text-xs font-semibold text-muted">
                           Code {message.parsed.reference}
-                        </Text>
+                        </AppText>
                       ) : null}
-                      <Text className="mt-2 text-sm font-bold text-brand">
+                      <AppText className="mt-2 text-sm font-bold text-brand">
                         {message.parsed.kind === "income" ? "+" : "−"}
                         {formatMoney(message.parsed.amount, currency)}
                         {message.parsed.feeAmount > 0
                           ? ` · fee ${formatMoney(message.parsed.feeAmount, currency)}`
                           : ""}
-                      </Text>
+                      </AppText>
                     </Pressable>
                   ))}
                   <Button variant="secondary" onPress={refreshInbox} loading={loadingSms}>
@@ -405,10 +406,10 @@ export default function ImportMpesa() {
             </Button>
             <View className="flex-row items-start gap-2">
               <ChatTeardropTextIcon size={18} color="#9ca3af" />
-              <Text className="flex-1 text-sm text-muted">
+              <AppText className="flex-1 text-sm text-muted">
                 Tip: name accounts &quot;M-Pesa&quot;, &quot;M-Shwari&quot;, &quot;Ziidi&quot; or
                 &quot;Pochi&quot; so amounts land in the right pocket.
-              </Text>
+              </AppText>
             </View>
           </Card>
         </Section>
@@ -436,20 +437,20 @@ export default function ImportMpesa() {
       >
         {pending ? (
           <View className="gap-3 px-1 pb-2">
-            <Text className="text-sm text-muted">{productHint(pending.product)}</Text>
-            <Text className="text-sm font-semibold text-ink">{pending.note}</Text>
+            <AppText className="text-sm text-muted">{productHint(pending.product)}</AppText>
+            <AppText className="text-sm font-semibold text-ink">{pending.note}</AppText>
 
             {pending.suggestedCategoryId ? (
               <Pressable
                 onPress={() => setCategoryId(pending.suggestedCategoryId)}
                 className="rounded-2xl border border-brand bg-brand-soft px-4 py-3 active:opacity-80"
               >
-                <Text className="text-xs font-bold uppercase tracking-wider text-faint">
+                <AppText className="text-xs font-bold uppercase tracking-wider text-faint">
                   Suggested
-                </Text>
-                <Text className="mt-0.5 text-sm font-semibold text-brand">
+                </AppText>
+                <AppText className="mt-0.5 text-sm font-semibold text-brand">
                   {getCategory(pending.suggestedCategoryId).label}
-                </Text>
+                </AppText>
               </Pressable>
             ) : null}
 

@@ -1,30 +1,41 @@
 /**
  * components/ui/card.tsx
  *
- * The surfaces everything else sits on: a plain white card, a pressable row,
- * and the section header that labels a group of them.
+ * Soft elevated surfaces — Apple Settings / Material You cards without noisy borders.
  */
 
+import { AppText } from "@/components/ui/app-text";
+
 import { cn } from "@/lib/cn";
+import { useThemeColors } from "@/lib/theme";
 import { CaretRightIcon } from "phosphor-react-native";
 import React from "react";
-import { Pressable, Text, View, type PressableProps } from "react-native";
+import { Pressable, View, type PressableProps, type ViewStyle } from "react-native";
 
 export interface CardProps {
   children: React.ReactNode;
   className?: string;
   /** Removes the inner padding, for cards that hold their own list rows. */
   flush?: boolean;
+  style?: ViewStyle;
 }
 
-export function Card({ children, className, flush = false }: CardProps) {
+export function Card({ children, className, flush = false, style }: CardProps) {
+  const colors = useThemeColors();
+
   return (
     <View
-      className={cn(
-        "rounded-3xl border border-hairline bg-surface",
-        !flush && "p-5",
-        className,
-      )}
+      className={cn("overflow-hidden rounded-[22px] bg-surface", !flush && "p-5", className)}
+      style={[
+        {
+          shadowColor: colors.chrome,
+          shadowOpacity: colors.heroInverted ? 0.35 : 0.06,
+          shadowRadius: 16,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 2,
+        },
+        style,
+      ]}
     >
       {children}
     </View>
@@ -41,11 +52,9 @@ export interface SectionProps {
 
 export function Section({ title, action, children, className }: SectionProps) {
   return (
-    <View className={cn("gap-3", className)}>
+    <View className={cn("gap-2.5", className)}>
       <View className="flex-row items-center justify-between px-1">
-        <Text className="text-xs font-bold uppercase tracking-widest text-faint">
-          {title}
-        </Text>
+        <AppText className="text-[15px] font-semibold tracking-tight text-ink">{title}</AppText>
         {action}
       </View>
       {children}
@@ -54,21 +63,17 @@ export function Section({ title, action, children, className }: SectionProps) {
 }
 
 export interface RowProps extends Omit<PressableProps, "children" | "className" | "style"> {
-  /** Leading element, usually an icon tile or avatar. */
   leading?: React.ReactNode;
   title: string;
   subtitle?: string;
-  /** Right-hand value, e.g. an amount. */
   value?: React.ReactNode;
-  /** Shows a chevron to signal navigation. */
   chevron?: boolean;
   danger?: boolean;
   className?: string;
-  /** Hides the hairline, for the last row in a card. */
   last?: boolean;
 }
 
-/** A list row sized for comfortable one-thumb tapping. */
+/** List row sized for comfortable one-thumb tapping (HIG / Material). */
 export function Row({
   leading,
   title,
@@ -81,12 +86,14 @@ export function Row({
   onPress,
   ...rest
 }: RowProps) {
+  const colors = useThemeColors();
+
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
       className={cn(
-        "flex-row items-center gap-3 px-5 py-4",
+        "will-change-pressable flex-row items-center gap-3.5 px-4 py-[14px]",
         !last && "border-b border-hairline",
         onPress && "active:bg-subtle",
         className,
@@ -96,33 +103,33 @@ export function Row({
       {leading}
 
       <View className="flex-1">
-        <Text
+        <AppText
           className={cn(
-            "text-base font-semibold tracking-tight",
+            "text-[17px] font-medium tracking-tight",
             danger ? "text-negative" : "text-ink",
           )}
           numberOfLines={1}
         >
           {title}
-        </Text>
+        </AppText>
         {subtitle ? (
-          <Text className="mt-0.5 text-sm text-muted" numberOfLines={1}>
+          <AppText className="mt-0.5 text-[13px] leading-4 text-muted" numberOfLines={2}>
             {subtitle}
-          </Text>
+          </AppText>
         ) : null}
       </View>
 
       {value}
-      {chevron && <CaretRightIcon size={18} color="#9aa9bd" weight="bold" />}
+      {chevron ? <CaretRightIcon size={16} color={colors.faint} weight="bold" /> : null}
     </Pressable>
   );
 }
 
-/** Square tinted tile used as a row's leading icon. */
+/** Soft tonal tile for a row's leading icon. */
 export function IconTile({
   color,
   children,
-  size = 40,
+  size = 36,
 }: {
   color: string;
   children: React.ReactNode;
@@ -130,8 +137,8 @@ export function IconTile({
 }) {
   return (
     <View
-      className="items-center justify-center rounded-2xl"
-      style={{ width: size, height: size, backgroundColor: `${color}1a` }}
+      className="items-center justify-center rounded-[11px]"
+      style={{ width: size, height: size, backgroundColor: `${color}18` }}
     >
       {children}
     </View>

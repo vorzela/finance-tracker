@@ -7,7 +7,8 @@
 import { cn } from "@/lib/cn";
 import { Image } from "expo-image";
 import React from "react";
-import { Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { View } from "react-native";
 
 const SIZES = {
   xs: { box: 18, text: "text-[9px]" },
@@ -65,9 +66,9 @@ export function Avatar({
       className={cn("items-center justify-center rounded-full", ring && "border-2 border-white", className)}
       style={{ width: box, height: box, backgroundColor: color }}
     >
-      <Text className={cn("font-bold tracking-tight text-white", text)}>
+      <AppText className={cn("font-bold tracking-tight text-white", text)}>
         {initialsOf(name)}
-      </Text>
+      </AppText>
     </View>
   );
 }
@@ -102,7 +103,7 @@ export function AvatarStack({
           className="items-center justify-center rounded-full border-2 border-white bg-subtle"
           style={{ width: SIZES[size].box, height: SIZES[size].box, marginLeft: -10 }}
         >
-          <Text className="text-[11px] font-bold text-muted">+{extra}</Text>
+          <AppText className="text-[11px] font-bold text-muted">+{extra}</AppText>
         </View>
       )}
     </View>

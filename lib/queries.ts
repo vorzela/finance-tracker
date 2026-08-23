@@ -9,20 +9,29 @@
  */
 
 import {
+  onlineManager,
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseMutationResult,
 } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import * as api from "@/lib/api";
-import { keys } from "@/lib/api";
-import { buildOverview, coupleBalance, nextPostDate } from "@/lib/analytics";
+import { HISTORY_MONTHS, keys, type LedgerHome } from "@/lib/api";
+import {
+  buildOverview,
+  coupleBalanceFromAccounts,
+  fillMonthHistory,
+  nextPostDate,
+} from "@/lib/analytics";
 import { useAuth } from "@/lib/auth";
-import { currentMonthKey, monthKeyOf } from "@/lib/date";
+import { addMonths, currentMonthKey, monthKeyOf } from "@/lib/date";
+import { enqueueOffline, isNetworkFailure } from "@/lib/offline-queue";
 import { useScope } from "@/lib/scope";
 import { supabase } from "@/lib/supabase";
 import { DEFAULT_CURRENCY } from "@/lib/currency";
+import { uuid } from "@/lib/uuid";
 import { scopeGroupId, scopeKey, type Scope } from "@/types/finance";
 import type {
   Account,
@@ -33,14 +42,13 @@ import type {
   DebtView,
   Member,
   MonthOverview,
+  MonthPoint,
   RecurringDraft,
   RecurringView,
   TransactionDraft,
   TransactionView,
 } from "@/types/finance";
-import type { BudgetRow, ProfileRow, TransactionRow } from "@/types/database";
-
-const MONTHS_OF_HISTORY = 6;
+import type { BudgetRow, MessageRow, ProfileRow, TransactionRow } from "@/types/database";
 
 // ── Profile ─────────────────────────────────────────────────────────────────
 
@@ -102,28 +110,57 @@ export function useCurrency(): string {
 export function useMembers() {
   const { user, status } = useAuth();
   const { scope } = useScope();
+  const profileQuery = useProfile();
 
-  return useQuery({
+  const groupQuery = useQuery({
     queryKey: keys.members(scope),
     queryFn: () => api.fetchMembers(scope, user!.id),
-    enabled: status === "signedIn" && Boolean(user),
+    enabled: status === "signedIn" && Boolean(user) && scope.kind === "group",
     staleTime: 60_000,
   });
+
+  if (scope.kind === "personal") {
+    const members = profileQuery.data
+      ? [
+          {
+            id: profileQuery.data.id,
+            name: profileQuery.data.display_name,
+            color: profileQuery.data.color,
+            role: "owner" as const,
+            isSelf: true,
+            avatarUrl: profileQuery.data.avatar_url,
+          },
+        ]
+      : undefined;
+
+    return {
+      ...profileQuery,
+      data: members,
+    };
+  }
+
+  return groupQuery;
 }
 
 // ── Accounts ────────────────────────────────────────────────────────────────
 
-export function useAccounts() {
+export function useAccountRows() {
   const { status } = useAuth();
   const { scope } = useScope();
 
-  const accountsQuery = useQuery({
+  return useQuery({
     queryKey: keys.accounts(scope),
     queryFn: () => api.fetchAccounts(scope),
     enabled: status === "signedIn",
     staleTime: 60_000,
   });
+}
 
+export function useAccounts() {
+  const { status } = useAuth();
+  const { scope } = useScope();
+
+  const accountsQuery = useAccountRows();
   const balancesQuery = useQuery({
     queryKey: keys.balances(scope),
     queryFn: () => api.fetchBalances(scope),
@@ -151,13 +188,55 @@ export function useSaveAccount() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, draft }: { id?: string; draft: AccountDraft }) =>
-      id ? api.updateAccount(id, draft) : api.createAccount(scope, user!.id, draft),
+    mutationFn: async ({ id, draft }: { id?: string; draft: AccountDraft }) => {
+      const run = async (clientId?: string) => {
+        if (id) await api.updateAccount(id, draft);
+        else await api.createAccount(scope, user!.id, draft, clientId);
+      };
+
+      if (!onlineManager.isOnline()) {
+        const clientId = id ? undefined : uuid();
+        if (id) {
+          await enqueueOffline({ type: "updateAccount", accountId: id, draft });
+        } else {
+          await enqueueOffline({
+            type: "createAccount",
+            scope,
+            userId: user!.id,
+            draft,
+            clientId: clientId!,
+          });
+        }
+        return { offline: true as const };
+      }
+
+      try {
+        await run();
+        return { offline: false as const };
+      } catch (error) {
+        if (!isNetworkFailure(error)) throw error;
+        const clientId = id ? undefined : uuid();
+        if (id) {
+          await enqueueOffline({ type: "updateAccount", accountId: id, draft });
+        } else {
+          await enqueueOffline({
+            type: "createAccount",
+            scope,
+            userId: user!.id,
+            draft,
+            clientId: clientId!,
+          });
+        }
+        return { offline: true as const };
+      }
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.accounts(scope) });
       void queryClient.invalidateQueries({ queryKey: keys.balances(scope) });
       void queryClient.invalidateQueries({ queryKey: keys.memberBalances(scope) });
+      void queryClient.invalidateQueries({ queryKey: ["home", scopeKey(scope)] });
     },
+    networkMode: "always",
   });
 }
 
@@ -171,6 +250,7 @@ export function useArchiveAccount() {
       void queryClient.invalidateQueries({ queryKey: keys.accounts(scope) });
       void queryClient.invalidateQueries({ queryKey: keys.balances(scope) });
       void queryClient.invalidateQueries({ queryKey: keys.memberBalances(scope) });
+      void queryClient.invalidateQueries({ queryKey: ["home", scopeKey(scope)] });
     },
   });
 }
@@ -178,15 +258,17 @@ export function useArchiveAccount() {
 // ── Transactions ────────────────────────────────────────────────────────────
 
 export function useTransactions(monthKey: string) {
-  const { status } = useAuth();
-  const { scope } = useScope();
+  const snapshot = useLedgerSnapshot(monthKey);
 
-  return useQuery({
-    queryKey: keys.transactions(scope, monthKey),
-    queryFn: () => api.fetchTransactions(scope, monthKey),
-    enabled: status === "signedIn",
-    staleTime: 15_000,
-  });
+  return {
+    data: snapshot.data?.transactions,
+    isLoading: snapshot.isPending,
+    isFetching: snapshot.isFetching,
+    isRefetching: snapshot.isRefetching,
+    isError: snapshot.isError,
+    error: snapshot.error,
+    refetch: snapshot.refetch,
+  };
 }
 
 /**
@@ -217,27 +299,34 @@ export function useTransaction(id: string | undefined) {
   });
 }
 
-export function useHistory(monthKey: string, months = MONTHS_OF_HISTORY) {
-  const { status } = useAuth();
-  const { scope } = useScope();
+export function useHistory(monthKey: string, months = HISTORY_MONTHS) {
+  const snapshot = useLedgerSnapshot(monthKey);
+  const data = useMemo(
+    () => fillMonthHistory(snapshot.data?.history ?? [], monthKey, months),
+    [snapshot.data?.history, monthKey, months],
+  );
 
-  return useQuery({
-    queryKey: keys.history(scope, monthKey, months),
-    queryFn: () => api.fetchHistory(scope, monthKey, months),
-    enabled: status === "signedIn",
-    staleTime: 60_000,
-  });
+  return {
+    data,
+    isLoading: snapshot.isPending,
+    isFetching: snapshot.isFetching,
+    isRefetching: snapshot.isRefetching,
+    isError: snapshot.isError,
+    error: snapshot.error,
+    refetch: snapshot.refetch,
+  };
 }
 
 /** Adds the labels a list row needs, resolved from the members and accounts. */
 export function useTransactionViews(rows: TransactionRow[]): TransactionView[] {
   const { data: members } = useMembers();
-  const { accounts } = useAccounts();
-  const { data: debts } = useDebtRows();
+  const { data: accountRows } = useAccountRows();
+  const needsDebts = useMemo(() => rows.some((row) => Boolean(row.debt_id)), [rows]);
+  const { data: debts } = useDebtRows(needsDebts);
 
   return useMemo(() => {
     const memberById = new Map((members ?? []).map((member) => [member.id, member]));
-    const accountById = new Map(accounts.map((account) => [account.id, account]));
+    const accountById = new Map((accountRows ?? []).map((account) => [account.id, account]));
     const debtById = new Map((debts ?? []).map((debt) => [debt.id, debt]));
 
     return rows.map((row) => {
@@ -258,7 +347,7 @@ export function useTransactionViews(rows: TransactionRow[]): TransactionView[] {
         debtName: row.debt_id ? (debtById.get(row.debt_id)?.name ?? null) : null,
       };
     });
-  }, [rows, members, accounts, debts]);
+  }, [rows, members, accountRows, debts]);
 }
 
 function useInvalidateLedger() {
@@ -274,12 +363,92 @@ function useInvalidateLedger() {
 
 export function useSaveTransaction() {
   const { scope } = useScope();
+  const queryClient = useQueryClient();
   const invalidate = useInvalidateLedger();
 
   return useMutation({
-    mutationFn: ({ id, draft }: { id?: string; draft: TransactionDraft }) =>
-      id ? api.updateTransaction(id, draft) : api.createTransaction(scope, draft),
-    onSuccess: invalidate,
+    mutationFn: async ({ id, draft }: { id?: string; draft: TransactionDraft }) => {
+      const runOnline = async (clientId?: string) => {
+        if (id) await api.updateTransaction(id, draft);
+        else await api.createTransaction(scope, draft, clientId);
+      };
+
+      const queue = async (clientId?: string) => {
+        if (id) {
+          await enqueueOffline({
+            type: "updateTransaction",
+            transactionId: id,
+            draft,
+          });
+        } else {
+          await enqueueOffline({
+            type: "createTransaction",
+            scope,
+            draft,
+            clientId: clientId!,
+          });
+        }
+      };
+
+      if (!onlineManager.isOnline()) {
+        const clientId = id ?? uuid();
+        await queue(id ? undefined : clientId);
+        patchTransactionCache(queryClient, scope, id ?? clientId, draft);
+        return { offline: true as const };
+      }
+
+      try {
+        await runOnline();
+        return { offline: false as const };
+      } catch (error) {
+        if (!isNetworkFailure(error)) throw error;
+        const clientId = id ?? uuid();
+        await queue(id ? undefined : clientId);
+        patchTransactionCache(queryClient, scope, id ?? clientId, draft);
+        return { offline: true as const };
+      }
+    },
+    onSuccess: (result) => {
+      if (!result?.offline) invalidate();
+    },
+    networkMode: "always",
+  });
+}
+
+function patchTransactionCache(
+  queryClient: QueryClient,
+  scope: Scope,
+  id: string,
+  draft: TransactionDraft,
+) {
+  const monthKey = monthKeyOf(draft.occurredAt);
+  const key = keys.transactions(scope, monthKey);
+  const row: TransactionRow = {
+    id,
+    user_id: draft.userId,
+    group_id: scopeGroupId(scope),
+    kind: draft.kind,
+    amount: draft.amount,
+    fee_amount: draft.feeAmount,
+    category_id: draft.categoryId,
+    account_id: draft.accountId,
+    to_account_id: draft.kind === "transfer" ? draft.toAccountId : null,
+    debt_id: draft.debtId,
+    note: draft.note,
+    occurred_at: draft.occurredAt,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  queryClient.setQueryData<TransactionRow[]>(key, (prev) => {
+    const list = prev ?? [];
+    const index = list.findIndex((item) => item.id === id);
+    if (index >= 0) {
+      const next = [...list];
+      next[index] = { ...next[index], ...row };
+      return next;
+    }
+    return [row, ...list];
   });
 }
 
@@ -287,8 +456,22 @@ export function useDeleteTransaction() {
   const invalidate = useInvalidateLedger();
 
   return useMutation({
-    mutationFn: (id: string) => api.deleteTransaction(id),
+    mutationFn: async (id: string) => {
+      if (!onlineManager.isOnline()) {
+        await enqueueOffline({ type: "deleteTransaction", transactionId: id });
+        return { offline: true as const };
+      }
+      try {
+        await api.deleteTransaction(id);
+        return { offline: false as const };
+      } catch (error) {
+        if (!isNetworkFailure(error)) throw error;
+        await enqueueOffline({ type: "deleteTransaction", transactionId: id });
+        return { offline: true as const };
+      }
+    },
     onSuccess: invalidate,
+    networkMode: "always",
   });
 }
 
@@ -321,6 +504,7 @@ export function useSaveBudget() {
     }) => api.saveBudget(scope, user!.id, existing, draft),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.budgets(scope) });
+      void queryClient.invalidateQueries({ queryKey: ["home", scopeKey(scope)] });
     },
   });
 }
@@ -333,6 +517,7 @@ export function useDeleteBudget() {
     mutationFn: (id: string) => api.deleteBudget(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.budgets(scope) });
+      void queryClient.invalidateQueries({ queryKey: ["home", scopeKey(scope)] });
     },
   });
 }
@@ -349,27 +534,19 @@ export function useCoupleBalance(): {
   isLoading: boolean;
   refetch: () => void;
 } {
-  const { status } = useAuth();
-  const { scope } = useScope();
+  const { accounts, isLoading, refetch } = useAccounts();
   const members = useMembers();
 
-  const query = useQuery({
-    queryKey: keys.memberBalances(scope),
-    queryFn: () => api.fetchMemberBalances(scope),
-    enabled: status === "signedIn",
-    staleTime: 30_000,
-  });
-
   const data = useMemo(() => {
-    if (!query.data) return null;
-    return coupleBalance(query.data, members.data ?? []);
-  }, [query.data, members.data]);
+    if (accounts.length === 0 && !members.data) return null;
+    return coupleBalanceFromAccounts(accounts, members.data ?? []);
+  }, [accounts, members.data]);
 
   return {
     data,
-    isLoading: query.isLoading || members.isLoading,
+    isLoading: isLoading || members.isLoading,
     refetch: () => {
-      void query.refetch();
+      void refetch();
     },
   };
 }
@@ -377,14 +554,14 @@ export function useCoupleBalance(): {
 // ── Debts ───────────────────────────────────────────────────────────────────
 
 /** Raw rows, used where only the names are needed. */
-function useDebtRows() {
+function useDebtRows(enabled = true) {
   const { status } = useAuth();
   const { scope } = useScope();
 
   return useQuery({
     queryKey: keys.debts(scope),
     queryFn: () => api.fetchDebts(scope),
-    enabled: status === "signedIn",
+    enabled: status === "signedIn" && enabled,
     staleTime: 60_000,
   });
 }
@@ -489,7 +666,7 @@ export function useRecurring(): {
   const { status } = useAuth();
   const { scope } = useScope();
   const members = useMembers();
-  const { accounts } = useAccounts();
+  const { data: accountRows } = useAccountRows();
 
   const query = useQuery({
     queryKey: keys.recurring(scope),
@@ -500,7 +677,7 @@ export function useRecurring(): {
 
   const entries = useMemo<RecurringView[]>(() => {
     const memberById = new Map((members.data ?? []).map((m) => [m.id, m]));
-    const accountById = new Map(accounts.map((account) => [account.id, account]));
+    const accountById = new Map((accountRows ?? []).map((account) => [account.id, account]));
     const thisMonth = currentMonthKey();
 
     return (query.data ?? []).map((entry) => {
@@ -516,7 +693,7 @@ export function useRecurring(): {
         postedThisMonth: entry.last_posted_month === thisMonth,
       };
     });
-  }, [query.data, members.data, accounts]);
+  }, [query.data, members.data, accountRows]);
 
   return {
     entries,
@@ -676,56 +853,127 @@ export interface OverviewResult {
   overview: MonthOverview | null;
   members: Member[];
   rows: TransactionRow[];
+  accounts: Account[];
+  history: MonthPoint[];
+  couple: CoupleBalance | null;
   isLoading: boolean;
   isRefetching: boolean;
   error: Error | null;
   refetch: () => void;
 }
 
-export function useMonthOverview(monthKey: string): OverviewResult {
-  const transactions = useTransactions(monthKey);
-  const history = useHistory(monthKey);
-  const budgets = useBudgets();
-  const members = useMembers();
+function hydrateLedgerCaches(
+  queryClient: QueryClient,
+  scope: Scope,
+  monthKey: string,
+  snap: LedgerHome,
+) {
+  queryClient.setQueryData(keys.transactions(scope, monthKey), snap.transactions);
+  queryClient.setQueryData(keys.monthHistory(scope, monthKey, HISTORY_MONTHS), snap.history);
+  queryClient.setQueryData(
+    keys.accounts(scope),
+    snap.accounts.map(({ balance: _balance, ...row }) => row),
+  );
+  const balances: Record<string, number> = {};
+  for (const account of snap.accounts) balances[account.id] = account.balance;
+  queryClient.setQueryData(keys.balances(scope), balances);
+  queryClient.setQueryData(keys.budgets(scope), snap.budgets);
+  queryClient.setQueryData(keys.members(scope), snap.members);
+}
 
-  const previousMonthRows = useMemo(() => {
-    const previous = previousMonthOf(monthKey);
-    return (history.data ?? []).filter(
-      (point) => monthKeyOf(point.occurred_at) === previous,
-    );
-  }, [history.data, monthKey]);
+/**
+ * One round trip for the month the UI is looking at. Activity, insights and
+ * budget alerts subscribe to the same query, so the tab bar does not fan out
+ * a dozen independent Supabase calls on launch.
+ */
+export function useLedgerSnapshot(monthKey: string) {
+  const { user, status } = useAuth();
+  const { scope } = useScope();
+  const queryClient = useQueryClient();
+
+  return useQuery({
+    queryKey: keys.home(scope, monthKey),
+    queryFn: async () => {
+      const snap = await api.fetchLedgerHome(scope, user!.id, monthKey);
+      hydrateLedgerCaches(queryClient, scope, monthKey, snap);
+      return snap;
+    },
+    enabled: status === "signedIn" && Boolean(user),
+    staleTime: 15_000,
+    placeholderData: (previousData, previousQuery) => {
+      if (!previousData || !previousQuery) return undefined;
+      if (previousQuery.queryKey[1] !== scopeKey(scope)) return undefined;
+      return previousData;
+    },
+  });
+}
+
+export function useMonthOverview(monthKey: string): OverviewResult {
+  const snapshot = useLedgerSnapshot(monthKey);
 
   const overview = useMemo(() => {
-    if (!transactions.data) return null;
+    if (!snapshot.data) return null;
+    const previousSpent =
+      snapshot.data.history.find((point) => point.monthKey === addMonths(monthKey, -1))
+        ?.spent ?? 0;
     return buildOverview({
       monthKey,
-      rows: transactions.data,
-      previousRows: previousMonthRows,
-      members: members.data ?? [],
-      budgets: budgets.data ?? [],
+      rows: snapshot.data.transactions,
+      previousSpent,
+      members: snapshot.data.members,
+      budgets: snapshot.data.budgets,
     });
-  }, [transactions.data, previousMonthRows, members.data, budgets.data, monthKey]);
+  }, [snapshot.data, monthKey]);
+
+  const couple = useMemo(() => {
+    if (!snapshot.data) return null;
+    return coupleBalanceFromAccounts(snapshot.data.accounts, snapshot.data.members);
+  }, [snapshot.data]);
 
   return {
     overview,
-    members: members.data ?? [],
-    rows: transactions.data ?? [],
-    isLoading: transactions.isLoading || members.isLoading,
-    isRefetching: transactions.isRefetching || history.isRefetching,
-    error: (transactions.error ?? members.error ?? budgets.error) as Error | null,
+    members: snapshot.data?.members ?? [],
+    rows: snapshot.data?.transactions ?? [],
+    accounts: snapshot.data?.accounts ?? [],
+    history: snapshot.data?.history ?? [],
+    couple,
+    isLoading: snapshot.isPending,
+    isRefetching: snapshot.isRefetching,
+    error: (snapshot.error as Error | null) ?? null,
     refetch: () => {
-      void transactions.refetch();
-      void history.refetch();
-      void budgets.refetch();
-      void members.refetch();
+      void snapshot.refetch();
     },
   };
 }
 
-function previousMonthOf(monthKey: string): string {
-  const [year, month] = monthKey.split("-").map(Number);
-  const date = new Date(year, month - 2, 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+// ── Chat ────────────────────────────────────────────────────────────────────
+
+export function useMessages(groupId: string | null) {
+  const { status } = useAuth();
+
+  return useQuery({
+    queryKey: keys.messages(groupId ?? "none"),
+    queryFn: () => api.fetchMessages(groupId!),
+    enabled: status === "signedIn" && Boolean(groupId),
+    staleTime: 15_000,
+  });
+}
+
+export function useSendMessage() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ groupId, body }: { groupId: string; body: string }) =>
+      api.sendMessage(groupId, user!.id, body, uuid()),
+    onSuccess: (row) => {
+      queryClient.setQueryData<MessageRow[]>(keys.messages(row.group_id), (prev) => {
+        if (!prev) return [row];
+        if (prev.some((item) => item.id === row.id)) return prev;
+        return [...prev, row];
+      });
+    },
+  });
 }
 
 // ── Realtime ────────────────────────────────────────────────────────────────

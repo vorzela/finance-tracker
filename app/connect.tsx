@@ -20,7 +20,8 @@ import { Redirect, useRouter } from "expo-router";
 import { ArrowRightIcon, DatabaseIcon, KeyIcon, LinkIcon } from "phosphor-react-native";
 import React, { useState } from "react";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function Connect() {
@@ -64,13 +65,13 @@ export default function Connect() {
       >
         <View className="items-center gap-4">
           <Logo size={72} />
-          <Text className="text-center text-3xl font-bold tracking-tight text-white">
+          <AppText className="text-center text-3xl font-bold tracking-tight text-white">
             Connect your database
-          </Text>
-          <Text className="text-center text-base leading-6 text-navy-200">
+          </AppText>
+          <AppText className="text-center text-base leading-6 text-navy-200">
             This copy of Duo Wallet doesn&apos;t have a Supabase project baked in
             yet. Paste yours below — it&apos;s stored on this phone only.
-          </Text>
+          </AppText>
         </View>
 
         <View className="mt-8 rounded-3xl bg-white p-5">
@@ -117,18 +118,18 @@ export default function Connect() {
         <View className="mt-6 gap-3 rounded-3xl border border-white/10 bg-white/5 p-5">
           <View className="flex-row items-center gap-2">
             <DatabaseIcon size={18} color="#a9bfe0" weight="duotone" />
-            <Text className="text-sm font-bold text-navy-100">First time setup</Text>
+            <AppText className="text-sm font-bold text-navy-100">First time setup</AppText>
           </View>
-          <Text className="text-sm leading-6 text-navy-200">
+          <AppText className="text-sm leading-6 text-navy-200">
             1. Create a free project at supabase.com{"\n"}
             2. Open the SQL editor and run{" "}
-            <Text className="font-bold text-white">supabase/schema.sql</Text>
+            <AppText className="font-bold text-white">supabase/schema.sql</AppText>
             {"\n"}
             3. Turn off &quot;Confirm email&quot; under Authentication → Sign In /
             Providers so sign-up works instantly{"\n"}
             4. Copy the project URL and publishable key from Project Settings →
             API Keys
-          </Text>
+          </AppText>
         </View>
       </KeyboardAwareScrollView>
     </View>

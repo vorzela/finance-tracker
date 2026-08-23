@@ -13,6 +13,7 @@ export {
   useThemeColors,
   colorsFor,
   fontFamilyName,
+  fontFamilyForStyle,
   THEME_OPTIONS,
   SCHEME_OPTIONS,
   FONT_OPTIONS,
@@ -23,4 +24,5 @@ export {
   type AccentId,
   type FontId,
   type AccentPalette,
+  type FontWeight,
 } from "@/lib/appearance";

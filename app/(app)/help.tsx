@@ -14,7 +14,7 @@ import {
   ShieldCheckIcon,
 } from "phosphor-react-native";
 import React from "react";
-import { Text } from "react-native";
+import { AppText } from "@/components/ui/app-text";
 
 export default function Help() {
   const router = useRouter();
@@ -24,11 +24,11 @@ export default function Help() {
       <Header title="Help" subtitle="Guides and legal" back />
       <ScreenScroll>
         <Card>
-          <Text className="text-sm leading-6 text-muted">
+          <AppText className="text-sm leading-6 text-muted">
             Paste M-Pesa SMS when adding an entry to fill amount, fee, code and
             time automatically. Fuliza is debt; M-Shwari / Ziidi are savings;
             Pochi is business — you still choose the category.
-          </Text>
+          </AppText>
         </Card>
 
         <Section title="Guides">

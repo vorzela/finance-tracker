@@ -6,12 +6,19 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  FONT_OPTIONS,
+  type FontId,
+} from "@/lib/font-faces";
+import { syncFontRuntime } from "@/lib/font-runtime";
 import React, {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Appearance, useColorScheme } from "react-native";
@@ -20,65 +27,79 @@ const STORAGE_KEY = "duo-wallet.appearance";
 
 export type SchemePreference = "system" | "light" | "dark";
 export type AccentId = "midnight" | "emerald" | "ocean" | "sand" | "rose" | "slate";
-export type FontId = "sans" | "serif" | "nunito" | "fraunces" | "lora" | "literata";
+export type { FontId, FontWeight } from "@/lib/font-faces";
+export { FONT_OPTIONS, fontFamilyName, fontFamilyForStyle } from "@/lib/font-faces";
 
 export interface AccentPalette {
   id: AccentId;
   label: string;
   brand: string;
   brandSoft: string;
-  gradient: [string, string, string];
+  /** Soft mist wash for light mode heroes (pair with dark onGradient text). */
+  lightGradient: [string, string, string];
+  /** Deeper but still airy wash for dark mode heroes. */
+  darkGradient: [string, string, string];
   chip: string;
 }
 
+/**
+ * Soft, airy accents — misty mid-tones instead of near-black navy blocks.
+ * Light gradients stay pale so the dashboard hero never feels like a void.
+ */
 export const ACCENTS: AccentPalette[] = [
   {
     id: "midnight",
-    label: "Midnight",
-    brand: "#1e3a5f",
-    brandSoft: "#eef2f8",
-    gradient: ["#2f5ba8", "#1b3560", "#0d1c33"],
-    chip: "#2a5298",
+    label: "Sky",
+    brand: "#4f74a8",
+    brandSoft: "#eaf0f8",
+    lightGradient: ["#eef3fa", "#d5e2f4", "#b7ccea"],
+    darkGradient: ["#3d5f8f", "#2a4568", "#1c314c"],
+    chip: "#6b8fc0",
   },
   {
     id: "emerald",
-    label: "Emerald",
-    brand: "#166b3f",
-    brandSoft: "#e8f6ee",
-    gradient: ["#2f9e63", "#166b3f", "#0b3d24"],
-    chip: "#1f9155",
+    label: "Moss",
+    brand: "#3d8f64",
+    brandSoft: "#eaf6f0",
+    lightGradient: ["#eef8f2", "#cfead9", "#9fd4b4"],
+    darkGradient: ["#2f7a52", "#1f5639", "#143a27"],
+    chip: "#4fa978",
   },
   {
     id: "ocean",
-    label: "Ocean",
-    brand: "#0e7490",
-    brandSoft: "#e6f7fb",
-    gradient: ["#22b8cf", "#0e7490", "#164e63"],
-    chip: "#0891b2",
+    label: "Lagoon",
+    brand: "#2a9bb0",
+    brandSoft: "#e8f6f9",
+    lightGradient: ["#eaf7fa", "#c5e8ef", "#8fd0de"],
+    darkGradient: ["#1f7f91", "#165a68", "#0f3d47"],
+    chip: "#3db4c9",
   },
   {
     id: "sand",
-    label: "Sand",
-    brand: "#92400e",
-    brandSoft: "#f8efe4",
-    gradient: ["#d97706", "#b45309", "#78350f"],
-    chip: "#d97706",
+    label: "Clay",
+    brand: "#c17a3a",
+    brandSoft: "#faf3eb",
+    lightGradient: ["#faf4ec", "#f0dcc0", "#e0b887"],
+    darkGradient: ["#a86630", "#7a4a22", "#4f3016"],
+    chip: "#d49252",
   },
   {
     id: "rose",
-    label: "Rose",
-    brand: "#9f1239",
-    brandSoft: "#fde8ef",
-    gradient: ["#e11d48", "#9f1239", "#4c0519"],
-    chip: "#e11d48",
+    label: "Blush",
+    brand: "#c45b78",
+    brandSoft: "#faf0f3",
+    lightGradient: ["#faf0f3", "#efd0da", "#e0a0b4"],
+    darkGradient: ["#a84864", "#763248", "#4a2030"],
+    chip: "#d47892",
   },
   {
     id: "slate",
-    label: "Slate",
-    brand: "#334155",
-    brandSoft: "#f1f5f9",
-    gradient: ["#64748b", "#334155", "#0f172a"],
-    chip: "#475569",
+    label: "Fog",
+    brand: "#5c6b7d",
+    brandSoft: "#f1f3f6",
+    lightGradient: ["#f2f4f7", "#d9dee6", "#b4bdc9"],
+    darkGradient: ["#4a5564", "#343d4a", "#222830"],
+    chip: "#7a8796",
   },
 ];
 
@@ -88,37 +109,6 @@ export const SCHEME_OPTIONS: { value: SchemePreference; label: string; hint: str
   { value: "dark", label: "Dark", hint: "Always dark" },
 ];
 
-export const FONT_OPTIONS: { value: FontId; label: string; hint: string }[] = [
-  { value: "sans", label: "DM Sans", hint: "Clean modern · italic available" },
-  { value: "serif", label: "Source Serif", hint: "Editorial · italic available" },
-  { value: "nunito", label: "Nunito", hint: "Soft rounded · italic available" },
-  { value: "fraunces", label: "Fraunces", hint: "Warm display · italic available" },
-  { value: "lora", label: "Lora", hint: "Classic serif · italic available" },
-  { value: "literata", label: "Literata", hint: "Reading serif · italic available" },
-];
-
-/** Maps a font choice (+ italic) to the loaded expo-font family name. */
-export function fontFamilyName(font: FontId, italic: boolean): string {
-  const map: Record<FontId, { regular: string; italic: string }> = {
-    sans: { regular: "DMSans_400Regular", italic: "DMSans_400Regular_Italic" },
-    serif: {
-      regular: "SourceSerif4_400Regular",
-      italic: "SourceSerif4_400Regular_Italic",
-    },
-    nunito: { regular: "Nunito_400Regular", italic: "Nunito_400Regular_Italic" },
-    fraunces: {
-      regular: "Fraunces_400Regular",
-      italic: "Fraunces_400Regular_Italic",
-    },
-    lora: { regular: "Lora_400Regular", italic: "Lora_400Regular_Italic" },
-    literata: {
-      regular: "Literata_400Regular",
-      italic: "Literata_400Regular_Italic",
-    },
-  };
-  const pair = map[font] ?? map.sans;
-  return italic ? pair.italic : pair.regular;
-}
 
 interface StoredAppearance {
   scheme: SchemePreference;
@@ -133,6 +123,7 @@ interface AppearanceContextValue {
   accent: AccentPalette;
   font: FontId;
   italic: boolean;
+  colors: ThemeColors;
   setSchemePreference: (value: SchemePreference) => void;
   setAccent: (value: AccentId) => void;
   setFont: (value: FontId) => void;
@@ -142,42 +133,43 @@ interface AppearanceContextValue {
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
 
+/** System-grouped neutrals — Apple HIG / Material You calm, not high-contrast. */
 const BASE = {
   light: {
-    canvas: "#f6f7fb",
+    canvas: "#f2f2f7",
     surface: "#ffffff",
     raised: "#ffffff",
-    subtle: "#f3f4f6",
-    ink: "#111827",
-    muted: "#6b7280",
-    faint: "#9ca3af",
+    subtle: "#ebebf0",
+    ink: "#1c1c1e",
+    muted: "#8e8e93",
+    faint: "#aeaeb2",
     onBrand: "#ffffff",
-    hairline: "#f0f1f5",
-    positive: "#1f9155",
-    positiveSoft: "#f0faf4",
-    negative: "#e02020",
-    negativeSoft: "#fff1f1",
-    warn: "#d97706",
-    warnSoft: "#fffbeb",
-    chrome: "#0d1c33",
+    hairline: "#e5e5ea",
+    positive: "#34c759",
+    positiveSoft: "#e8f8ee",
+    negative: "#ff3b30",
+    negativeSoft: "#ffeceb",
+    warn: "#ff9f0a",
+    warnSoft: "#fff6e8",
+    chrome: "#1c1c1e",
   },
   dark: {
-    canvas: "#0b1420",
-    surface: "#131f2f",
-    raised: "#1a2a3e",
-    subtle: "#22344b",
-    ink: "#f1f5f9",
-    muted: "#9aa9bd",
-    faint: "#6b7d94",
+    canvas: "#000000",
+    surface: "#1c1c1e",
+    raised: "#2c2c2e",
+    subtle: "#3a3a3c",
+    ink: "#f5f5f7",
+    muted: "#98989d",
+    faint: "#636366",
     onBrand: "#ffffff",
-    hairline: "#22344b",
-    positive: "#4ade80",
-    positiveSoft: "#10261c",
-    negative: "#fb7185",
-    negativeSoft: "#2a1418",
-    warn: "#fbbf24",
-    warnSoft: "#2a2010",
-    chrome: "#08101a",
+    hairline: "#38383a",
+    positive: "#30d158",
+    positiveSoft: "#0f2a18",
+    negative: "#ff453a",
+    negativeSoft: "#3a1210",
+    warn: "#ffd60a",
+    warnSoft: "#2a2208",
+    chrome: "#000000",
   },
 } as const;
 
@@ -201,6 +193,11 @@ export type ThemeColors = {
   brand: string;
   brandSoft: string;
   gradient: [string, string, string];
+  /** Primary text / icons sitting on the hero gradient. */
+  onGradient: string;
+  onGradientMuted: string;
+  /** True when the hero uses light-on-dark (dark scheme). */
+  heroInverted: boolean;
 };
 
 function applyScheme(preference: SchemePreference): void {
@@ -211,14 +208,35 @@ function accentById(id: AccentId): AccentPalette {
   return ACCENTS.find((item) => item.id === id) ?? ACCENTS[0];
 }
 
+export function colorsFor(
+  scheme: "light" | "dark",
+  accentId: AccentId = "midnight",
+): ThemeColors {
+  const accent = accentById(accentId);
+  const base = BASE[scheme];
+  const heroInverted = scheme === "dark";
+  return {
+    ...base,
+    brand: scheme === "dark" ? lighten(accent.brand) : accent.brand,
+    brandSoft: scheme === "dark" ? softDark(accent.brandSoft) : accent.brandSoft,
+    gradient: heroInverted ? accent.darkGradient : accent.lightGradient,
+    onGradient: heroInverted ? "#ffffff" : "#1c1c1e",
+    onGradientMuted: heroInverted ? "rgba(255,255,255,0.68)" : "rgba(28,28,30,0.55)",
+    heroInverted,
+  };
+}
+
 export function AppearanceProvider({ children }: { children: React.ReactNode }) {
   const [schemePreference, setSchemePreferenceState] =
     useState<SchemePreference>("system");
   const [accentId, setAccentId] = useState<AccentId>("midnight");
-  const [font, setFontState] = useState<FontId>("sans");
+  const [font, setFontState] = useState<FontId>("public");
   const [italic, setItalicState] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const scheme = useColorScheme() ?? "light";
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef({ schemePreference, accentId, font, italic });
+  latest.current = { schemePreference, accentId, font, italic };
 
   useEffect(() => {
     let cancelled = false;
@@ -246,53 +264,82 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
       });
     return () => {
       cancelled = true;
+      if (persistTimer.current) clearTimeout(persistTimer.current);
     };
   }, []);
 
-  const persist = useCallback((next: StoredAppearance) => {
-    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {});
+  const schedulePersist = useCallback(() => {
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      const snap = latest.current;
+      void AsyncStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          scheme: snap.schemePreference,
+          accent: snap.accentId,
+          font: snap.font,
+          italic: snap.italic,
+        } satisfies StoredAppearance),
+      ).catch(() => {});
+    }, 280);
   }, []);
 
   const setSchemePreference = useCallback(
     (value: SchemePreference) => {
-      setSchemePreferenceState(value);
-      applyScheme(value);
-      persist({ scheme: value, accent: accentId, font, italic });
+      startTransition(() => {
+        setSchemePreferenceState(value);
+        applyScheme(value);
+      });
+      schedulePersist();
     },
-    [accentId, font, italic, persist],
+    [schedulePersist],
   );
 
   const setAccent = useCallback(
     (value: AccentId) => {
-      setAccentId(value);
-      persist({ scheme: schemePreference, accent: value, font, italic });
+      startTransition(() => {
+        setAccentId(value);
+      });
+      schedulePersist();
     },
-    [schemePreference, font, italic, persist],
+    [schedulePersist],
   );
 
   const setFont = useCallback(
     (value: FontId) => {
-      setFontState(value);
-      persist({ scheme: schemePreference, accent: accentId, font: value, italic });
+      startTransition(() => {
+        setFontState(value);
+      });
+      schedulePersist();
     },
-    [schemePreference, accentId, italic, persist],
+    [schedulePersist],
   );
 
   const setItalic = useCallback(
     (value: boolean) => {
-      setItalicState(value);
-      persist({ scheme: schemePreference, accent: accentId, font, italic: value });
+      startTransition(() => {
+        setItalicState(value);
+      });
+      schedulePersist();
     },
-    [schemePreference, accentId, font, persist],
+    [schedulePersist],
   );
+
+  const accent = useMemo(() => accentById(accentId), [accentId]);
+  const colors = useMemo(() => colorsFor(scheme, accentId), [scheme, accentId]);
+
+  useEffect(() => {
+    syncFontRuntime(font, italic);
+  }, [font, italic]);
 
   const value = useMemo<AppearanceContextValue>(
     () => ({
       schemePreference,
       scheme,
-      accent: accentById(accentId),
+      accent,
       font,
       italic,
+      colors,
       setSchemePreference,
       setAccent,
       setFont,
@@ -302,9 +349,10 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
     [
       schemePreference,
       scheme,
-      accentId,
+      accent,
       font,
       italic,
+      colors,
       setSchemePreference,
       setAccent,
       setFont,
@@ -336,46 +384,25 @@ export function useTheme() {
 }
 
 export function useThemeColors(): ThemeColors {
-  const { scheme, accent } = useAppearance();
-  const base = BASE[scheme];
-  const brand = scheme === "dark" ? lighten(accent.brand) : accent.brand;
-  return {
-    ...base,
-    brand,
-    brandSoft: scheme === "dark" ? softDark(accent.brandSoft) : accent.brandSoft,
-    gradient: accent.gradient,
-  };
-}
-
-export function colorsFor(scheme: "light" | "dark", accentId: AccentId = "midnight"): ThemeColors {
-  const accent = accentById(accentId);
-  const base = BASE[scheme];
-  return {
-    ...base,
-    brand: scheme === "dark" ? lighten(accent.brand) : accent.brand,
-    brandSoft: scheme === "dark" ? softDark(accent.brandSoft) : accent.brandSoft,
-    gradient: accent.gradient,
-  };
+  return useAppearance().colors;
 }
 
 function softDark(lightSoft: string): string {
-  // Keep a dark-tinted soft fill that still hints at the accent.
-  if (lightSoft === "#e8f6ee") return "#10261c";
-  if (lightSoft === "#e6f7fb") return "#0c2a33";
-  if (lightSoft === "#f8efe4") return "#2a2010";
-  if (lightSoft === "#fde8ef") return "#2a1418";
-  if (lightSoft === "#f1f5f9") return "#1e293b";
-  return "#1c2c42";
+  if (lightSoft === "#eaf6f0") return "#1a2e24";
+  if (lightSoft === "#e8f6f9") return "#152830";
+  if (lightSoft === "#faf3eb") return "#2a2418";
+  if (lightSoft === "#faf0f3") return "#2c1a20";
+  if (lightSoft === "#f1f3f6") return "#232d3a";
+  return "#1c2838";
 }
 
 function lighten(hex: string): string {
-  // Simple lift so deep accents stay readable on dark canvas.
-  if (hex === "#1e3a5f") return "#7e9fd0";
-  if (hex === "#166b3f") return "#4ade80";
-  if (hex === "#0e7490") return "#67e8f9";
-  if (hex === "#92400e") return "#fbbf24";
-  if (hex === "#9f1239") return "#fb7185";
-  if (hex === "#334155") return "#94a3b8";
+  if (hex === "#4f74a8") return "#8eacd4";
+  if (hex === "#3d8f64") return "#6ec99a";
+  if (hex === "#2a9bb0") return "#6fcfda";
+  if (hex === "#c17a3a") return "#e0b078";
+  if (hex === "#c45b78") return "#e0a0b4";
+  if (hex === "#5c6b7d") return "#a8b4c4";
   return hex;
 }
 

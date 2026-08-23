@@ -25,10 +25,13 @@ import {
   useRotateInviteCode,
 } from "@/lib/queries";
 import { useScope } from "@/lib/scope";
+import { useThemeColors } from "@/lib/theme";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import {
   ArrowsClockwiseIcon,
+  ChatCircleIcon,
   CheckCircleIcon,
   CopyIcon,
   HouseLineIcon,
@@ -39,13 +42,16 @@ import {
   UsersIcon,
 } from "phosphor-react-native";
 import React, { useState } from "react";
-import { Alert, Pressable, Share, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Alert, Pressable, Share, View } from "react-native";
 
 export default function Household() {
   const { groups, scope, setScope } = useScope();
   const { data: profile } = useProfile();
   const { data: members } = useMembers();
   const currency = useCurrency();
+  const colors = useThemeColors();
+  const router = useRouter();
 
   const createGroup = useCreateGroup();
   const joinGroup = useJoinGroup();
@@ -164,14 +170,14 @@ export default function Household() {
                   <HouseLineIcon size={22} color="#166b3f" weight="duotone" />
                 </IconTile>
                 <View className="flex-1">
-                  <Text className="text-lg font-bold tracking-tight text-gray-900">
+                  <AppText className="text-lg font-bold tracking-tight text-gray-900">
                     {activeGroup.name}
-                  </Text>
-                  <Text className="text-sm text-gray-500">
+                  </AppText>
+                  <AppText className="text-sm text-gray-500">
                     {activeGroup.memberCount}{" "}
                     {activeGroup.memberCount === 1 ? "person" : "people"} ·{" "}
                     {activeGroup.currency_code}
-                  </Text>
+                  </AppText>
                 </View>
                 {activeGroup.role === "owner" ? (
                   <Pressable
@@ -190,15 +196,15 @@ export default function Household() {
 
               {/* Invite code */}
               <View className="rounded-2xl border border-dashed border-navy-200 bg-navy-50 p-4">
-                <Text className="text-xs font-bold uppercase tracking-widest text-navy-500">
+                <AppText className="text-xs font-bold uppercase tracking-widest text-navy-500">
                   Invite code
-                </Text>
-                <Text className="mt-1 text-3xl font-bold tracking-[8px] text-navy-700">
+                </AppText>
+                <AppText className="mt-1 text-3xl font-bold tracking-[8px] text-navy-700">
                   {activeGroup.invite_code}
-                </Text>
-                <Text className="mt-1 text-xs leading-5 text-navy-500">
+                </AppText>
+                <AppText className="mt-1 text-xs leading-5 text-navy-500">
                   They install the app, sign up, then tap Join with a code.
-                </Text>
+                </AppText>
 
                 <View className="mt-3 flex-row gap-2">
                   <Button
@@ -230,21 +236,31 @@ export default function Household() {
 
               {/* Members */}
               <View className="gap-3">
-                <Text className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                <AppText className="text-xs font-bold uppercase tracking-widest text-gray-400">
                   Members
-                </Text>
+                </AppText>
                 {(members ?? []).map((member) => (
                   <View key={member.id} className="flex-row items-center gap-3">
                     <Avatar name={member.name} color={member.color} size="md" />
                     <View className="flex-1">
-                      <Text className="text-base font-semibold text-gray-900">
+                      <AppText className="text-base font-semibold text-gray-900">
                         {member.isSelf ? `${member.name} (you)` : member.name}
-                      </Text>
-                      <Text className="text-xs capitalize text-gray-500">{member.role}</Text>
+                      </AppText>
+                      <AppText className="text-xs capitalize text-gray-500">{member.role}</AppText>
                     </View>
                   </View>
                 ))}
               </View>
+
+              {(members ?? []).length >= 2 ? (
+                <Button
+                  size="lg"
+                  icon={<ChatCircleIcon size={18} color={colors.onBrand} weight="fill" />}
+                  onPress={() => router.push("/chat" as never)}
+                >
+                  {(members ?? []).length >= 3 ? "Open group chat" : "Open chat"}
+                </Button>
+              ) : null}
 
               <View className="flex-row gap-2 border-t border-gray-100 pt-4">
                 {activeGroup.role === "owner" ? (
@@ -339,11 +355,11 @@ export default function Household() {
           </Card>
         </Section>
 
-        <Text className="px-2 text-xs leading-5 text-gray-400">
+        <AppText className="px-2 text-xs leading-5 text-gray-400">
           A shared ledger is separate from your personal one. Anything you log while
           viewing the household is visible to everyone in it; your personal
           spending stays private.
-        </Text>
+        </AppText>
       </ScreenScroll>
 
       {/* ── Create ─────────────────────────────────────────────────────── */}
@@ -370,17 +386,23 @@ export default function Household() {
 
           <Pressable
             onPress={() => setCurrencyOpen(true)}
-            className="flex-row items-center justify-between rounded-2xl border border-gray-200/60 bg-gray-50 px-4 py-4 active:bg-gray-100"
+            className="will-change-pressable flex-row items-center justify-between rounded-2xl px-4 py-4 active:opacity-80"
+            style={{ backgroundColor: colors.subtle }}
           >
             <View>
-              <Text className="text-xs font-bold uppercase tracking-wider text-gray-500">
+              <AppText
+                className="text-[11px] font-semibold tracking-wide"
+                style={{ color: colors.muted }}
+              >
                 Currency
-              </Text>
-              <Text className="mt-1 text-base text-gray-900">
+              </AppText>
+              <AppText className="mt-1 text-[16px] font-semibold" style={{ color: colors.ink }}>
                 {currencyCode} · {currencySymbol(currencyCode)}
-              </Text>
+              </AppText>
             </View>
-            <Text className="text-sm font-semibold text-navy-500">Change</Text>
+            <AppText className="text-[13px] font-semibold" style={{ color: colors.brand }}>
+              Change
+            </AppText>
           </Pressable>
 
           {formError ? <ErrorNote message={formError} /> : null}

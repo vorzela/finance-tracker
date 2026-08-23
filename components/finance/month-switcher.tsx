@@ -1,10 +1,10 @@
 /**
  * components/finance/month-switcher.tsx
  *
- * Moves the whole app one month at a time. Stepping past the current month is
- * blocked — there is nothing to see there, and an empty future month reads as a
- * bug rather than a boundary.
+ * Compact month pager — quiet chrome that works on canvas or hero.
  */
+
+import { AppText } from "@/components/ui/app-text";
 
 import { cn } from "@/lib/cn";
 import { addMonths, currentMonthKey, isCurrentMonth, monthLabel } from "@/lib/date";
@@ -12,13 +12,12 @@ import { useThemeColors } from "@/lib/theme";
 import * as Haptics from "expo-haptics";
 import { CaretLeftIcon, CaretRightIcon } from "phosphor-react-native";
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 export interface MonthSwitcherProps {
   monthKey: string;
   onChange: (monthKey: string) => void;
   className?: string;
-  /** Renders light-on-dark, for use inside the navy dashboard header. */
   inverted?: boolean;
 }
 
@@ -38,37 +37,36 @@ export function MonthSwitcher({
     onChange(next);
   };
 
-  const arrowColor = inverted ? "#ffffff" : colors.brand;
+  const arrowColor = inverted ? "#ffffff" : colors.ink;
+  const chipBg = inverted ? "rgba(255,255,255,0.18)" : colors.subtle;
+  const labelColor = inverted ? "#ffffff" : colors.ink;
+  const hintColor = inverted ? "rgba(255,255,255,0.65)" : colors.muted;
 
   return (
     <View className={cn("flex-row items-center gap-1", className)}>
       <Pressable
         onPress={() => step(-1)}
         hitSlop={10}
-        className={cn(
-          "h-9 w-9 items-center justify-center rounded-full",
-          inverted ? "bg-white/15 active:bg-white/25" : "bg-white active:bg-gray-100",
-        )}
+        className="will-change-pressable h-8 w-8 items-center justify-center rounded-full active:opacity-70"
+        style={{ backgroundColor: chipBg }}
       >
-        <CaretLeftIcon size={16} color={arrowColor} weight="bold" />
+        <CaretLeftIcon size={14} color={arrowColor} weight="bold" />
       </Pressable>
 
       <Pressable
         onPress={() => !atCurrent && onChange(currentMonthKey())}
-        className="min-w-[132px] items-center"
+        className="min-w-[120px] items-center px-1"
       >
-        <Text
-          className={cn(
-            "text-sm font-bold tracking-tight",
-            inverted ? "text-white" : "text-gray-900",
-          )}
+        <AppText
+          className="text-[13px] font-semibold tracking-tight"
+          style={{ color: labelColor }}
         >
           {atCurrent ? "This month" : monthLabel(monthKey)}
-        </Text>
+        </AppText>
         {!atCurrent ? (
-          <Text className={cn("text-[10px]", inverted ? "text-white/60" : "text-gray-400")}>
+          <AppText className="text-[10px]" style={{ color: hintColor }}>
             Tap to return
-          </Text>
+          </AppText>
         ) : null}
       </Pressable>
 
@@ -76,13 +74,10 @@ export function MonthSwitcher({
         onPress={() => step(1)}
         disabled={atCurrent}
         hitSlop={10}
-        className={cn(
-          "h-9 w-9 items-center justify-center rounded-full",
-          inverted ? "bg-white/15" : "bg-white",
-          atCurrent && "opacity-30",
-        )}
+        className="will-change-pressable h-8 w-8 items-center justify-center rounded-full"
+        style={{ backgroundColor: chipBg, opacity: atCurrent ? 0.35 : 1 }}
       >
-        <CaretRightIcon size={16} color={arrowColor} weight="bold" />
+        <CaretRightIcon size={14} color={arrowColor} weight="bold" />
       </Pressable>
     </View>
   );

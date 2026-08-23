@@ -28,9 +28,12 @@ export function buildMonthReportHtml(args: {
   overview: MonthOverview;
   rows: TransactionRow[];
   scopeLabel: string;
+  /** Personal display name and/or household name for the cover line. */
+  ownerName: string;
 }): string {
-  const { monthKey, currency, overview, rows, scopeLabel } = args;
+  const { monthKey, currency, overview, rows, scopeLabel, ownerName } = args;
   const title = `Duo Wallet · ${monthLabel(monthKey)}`;
+  const subtitle = `${ownerName} · ${scopeLabel} ledger`;
   const spent = formatMoney(overview.totals.spent, currency);
   const earned = formatMoney(overview.totals.earned, currency);
   const net = formatMoney(overview.totals.net, currency);
@@ -96,7 +99,7 @@ export function buildMonthReportHtml(args: {
 </head>
 <body>
   <h1>${esc(title)}</h1>
-  <p class="muted">${esc(scopeLabel)} ledger · generated for advice (save more / spend less)</p>
+  <p class="muted">${esc(subtitle)} · generated for advice (save more / spend less)</p>
 
   <div class="cards">
     <div class="card"><div class="label">Spent</div><div class="value">${esc(spent)}</div></div>
@@ -133,6 +136,7 @@ export async function shareMonthReportPdf(args: {
   overview: MonthOverview;
   rows: TransactionRow[];
   scopeLabel: string;
+  ownerName: string;
 }): Promise<void> {
   let Print: typeof import("expo-print");
   let Sharing: typeof import("expo-sharing");
@@ -154,7 +158,7 @@ export async function shareMonthReportPdf(args: {
   }
   await Sharing.shareAsync(uri, {
     mimeType: "application/pdf",
-    dialogTitle: `Share ${monthLabel(args.monthKey)} money report`,
+    dialogTitle: `Share ${args.ownerName} · ${monthLabel(args.monthKey)}`,
     UTI: "com.adobe.pdf",
   });
 }

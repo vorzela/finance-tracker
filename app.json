@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "duowallet",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#f6f7fb",
+    "backgroundColor": "#f2f2f7",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,

@@ -1,17 +1,19 @@
 /**
  * components/ui/tab-bar.tsx
  *
- * Floating tab bar with the add button raised in the middle. Active icons and
- * the + button follow the selected colour theme.
+ * Edge-to-edge bottom bar (not floating). Compose sits flush in the center.
  */
 
-import { cn } from "@/lib/cn";
+import { AppText } from "@/components/ui/app-text";
+
+import { useChat } from "@/lib/chat";
 import { useThemeColors } from "@/lib/theme";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import {
   ChartPieSliceIcon,
+  ChatCircleIcon,
   GearSixIcon,
   HouseIcon,
   PlusIcon,
@@ -19,23 +21,26 @@ import {
   type Icon,
 } from "phosphor-react-native";
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const TABS: Record<string, { label: string; glyph: Icon }> = {
   index: { label: "Home", glyph: HouseIcon },
   activity: { label: "Activity", glyph: ReceiptIcon },
+  chat: { label: "Chat", glyph: ChatCircleIcon },
   insights: { label: "Insights", glyph: ChartPieSliceIcon },
   settings: { label: "Settings", glyph: GearSixIcon },
 };
 
-/** Height the tab bar occupies, so scroll views can pad past it. */
-export const TAB_BAR_HEIGHT = 76;
+/** Row height above the home-indicator / nav inset. */
+export const TAB_BAR_HEIGHT = 58;
 
 export function TabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const colors = useThemeColors();
+  const { unreadByGroup } = useChat();
+  const unread = Object.values(unreadByGroup).reduce((sum, count) => sum + count, 0);
 
   const routes = state.routes.filter((route) => route.name in TABS);
   const half = Math.ceil(routes.length / 2);
@@ -45,6 +50,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
     const index = state.routes.findIndex((candidate) => candidate.key === route.key);
     const isActive = state.index === index;
     const Glyph = config.glyph;
+    const showUnread = route.name === "chat" && unread > 0;
 
     return (
       <Pressable
@@ -54,46 +60,54 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
           void Haptics.selectionAsync().catch(() => {});
           navigation.navigate(route.name);
         }}
-        className="flex-1 items-center justify-center gap-1 py-2"
+        className="will-change-pressable flex-1 items-center justify-center gap-0.5 py-1.5"
+        accessibilityRole="button"
+        accessibilityState={{ selected: isActive }}
+        accessibilityLabel={showUnread ? `Chat, ${unread} unread` : config.label}
       >
-        <Glyph
-          size={23}
-          color={isActive ? colors.brand : colors.faint}
-          weight={isActive ? "fill" : "regular"}
-        />
-        <Text
-          className={cn(
-            "text-[10px] font-semibold tracking-tight",
-            isActive ? "text-brand" : "text-gray-400",
-          )}
-          style={isActive ? { color: colors.brand } : undefined}
+        <View>
+          <Glyph
+            size={22}
+            color={isActive ? colors.brand : colors.faint}
+            weight={isActive ? "fill" : "regular"}
+          />
+          {showUnread ? (
+            <View
+              className="absolute -right-2.5 -top-1 min-w-[16px] items-center rounded-full px-1"
+              style={{ backgroundColor: colors.negative, height: 16 }}
+            >
+              <AppText className="text-[9px] font-bold leading-[16px]" style={{ color: colors.onBrand }}>
+                {unread > 9 ? "9+" : unread}
+              </AppText>
+            </View>
+          ) : null}
+        </View>
+        <AppText
+          className="text-[10px] font-medium tracking-tight"
+          style={{ color: isActive ? colors.brand : colors.faint }}
         >
           {config.label}
-        </Text>
+        </AppText>
       </Pressable>
     );
   };
 
   return (
     <View
-      className="absolute inset-x-0 bottom-0"
-      style={{ paddingBottom: insets.bottom + 10, paddingHorizontal: 16 }}
-      pointerEvents="box-none"
+      style={{
+        backgroundColor: colors.surface,
+        borderTopWidth: 1,
+        borderTopColor: colors.hairline,
+        paddingBottom: insets.bottom,
+      }}
     >
       <View
-        className="flex-row items-center rounded-[28px] border border-gray-200/70 bg-white px-2"
-        style={{
-          height: TAB_BAR_HEIGHT - 16,
-          shadowColor: colors.chrome,
-          shadowOpacity: 0.12,
-          shadowRadius: 16,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 8,
-        }}
+        className="flex-row items-center px-1"
+        style={{ height: TAB_BAR_HEIGHT }}
       >
         {routes.slice(0, half).map(renderTab)}
 
-        <View className="w-16 items-center">
+        <View className="w-16 items-center justify-center">
           <Pressable
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -104,19 +118,11 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
               router.push("/import-mpesa" as never);
             }}
             delayLongPress={350}
-            className="h-14 w-14 items-center justify-center rounded-full active:opacity-80"
-            style={{
-              marginTop: -28,
-              backgroundColor: colors.brand,
-              shadowColor: colors.brand,
-              shadowOpacity: 0.35,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 10,
-            }}
+            className="will-change-pressable h-11 w-11 items-center justify-center rounded-full active:opacity-85"
+            style={{ backgroundColor: colors.brand }}
             accessibilityLabel="Add a transaction"
           >
-            <PlusIcon size={26} color={colors.onBrand} weight="bold" />
+            <PlusIcon size={22} color={colors.onBrand} weight="bold" />
           </Pressable>
         </View>
 

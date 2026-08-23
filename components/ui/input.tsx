@@ -1,13 +1,13 @@
 /**
  * components/ui/input.tsx
  *
- * Modern, Apple-inspired text input with label embedded inside the container.
- * Includes hint, error/success states, leading/trailing nodes, and a
- * password variant with a show/hide toggle.
+ * Filled tonal fields with floating labels — Material You / iOS Form polish.
  */
 
 import { cn } from "@/lib/cn";
-import { useThemeColors } from "@/lib/theme";
+import { activeFontFamily } from "@/lib/font-runtime";
+import { useAppearance, useThemeColors } from "@/lib/theme";
+import { AppText } from "@/components/ui/app-text";
 import {
     CheckCircleIcon,
     EyeIcon,
@@ -16,11 +16,10 @@ import {
 } from "phosphor-react-native";
 import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import {
-    Pressable,
-    Text,
-    TextInput,
-    View,
-    type TextInputProps,
+  Pressable,
+  TextInput,
+  View,
+  type TextInputProps
 } from "react-native";
 import Animated, {
     interpolateColor,
@@ -29,27 +28,11 @@ import Animated, {
     withTiming,
 } from "react-native-reanimated";
 
-// Maps discrete state to a number on a shared animation range [0, 3]
-function colorMode(
-  error?: string,
-  success?: string,
-  isFocused?: boolean,
-): number {
+function colorMode(error?: string, success?: string, isFocused?: boolean): number {
   if (error) return 3;
   if (success) return 2;
   if (isFocused) return 1;
   return 0;
-}
-
-function getBorderClasses(
-  error?: string,
-  success?: string,
-  isFocused?: boolean,
-) {
-  if (error) return "border-red-400 bg-red-50";
-  if (success) return "border-green-400 bg-green-50";
-  if (isFocused) return "border-navy-400 bg-white";
-  return "border-gray-200/60 bg-gray-50";
 }
 
 export interface InputProps extends TextInputProps {
@@ -63,11 +46,6 @@ export interface InputProps extends TextInputProps {
   wrapClassName?: string;
 }
 
-/**
- * NativeWind v5 / react-native-css crashes TextInput when `text-center|left|right`
- * land in className (`path.split` on a boolean mapping). Strip those utilities and
- * apply textAlign via style instead.
- */
 const TEXT_ALIGN_RE = /\btext-(left|center|right|justify)\b/g;
 
 function splitTextAlignClass(className?: string): {
@@ -110,119 +88,103 @@ export const Input = forwardRef<TextInput, InputProps>(
     ref,
   ) => {
     const colors = useThemeColors();
+    const { font, italic } = useAppearance();
     const palette = useMemo(
-      () =>
-        [
-          colors.muted,
-          colors.brand,
-          colors.positive,
-          colors.negative,
-        ] as const,
+      () => [colors.muted, colors.brand, colors.positive, colors.negative] as const,
       [colors.muted, colors.brand, colors.positive, colors.negative],
     );
 
     const [isFocused, setIsFocused] = useState(false);
     const { className: safeClassName, textAlign } = splitTextAlignClass(className);
-
-    // Track internal value so uncontrolled inputs still animate the label correctly
     const [internalValue, setInternalValue] = useState(defaultValue ?? "");
-
-    // isActive when focused OR when the field has any content
     const isActive = isFocused || !!(value ?? internalValue);
 
-    // Internal ref so the Pressable container can call .focus() without
-    // relying on the consumer's ref, which may be null.
     const internalRef = useRef<TextInput>(null);
     const mergeRef = (node: TextInput | null) => {
       (internalRef as React.RefObject<TextInput | null>).current = node;
-      if (typeof ref === "function") {
-        ref(node);
-      } else if (ref) {
-        (ref as React.RefObject<TextInput | null>).current = node;
-      }
+      if (typeof ref === "function") ref(node);
+      else if (ref) (ref as React.RefObject<TextInput | null>).current = node;
     };
 
-    // ── Label size + translateY animation ────────────────────────────────────
-    // Inactive: fontSize=12, translateY=8  (label sits lower, appears centred)
-    // Active:   fontSize=11, translateY=0  (label floats up, makes room for text)
-    const labelSize = useSharedValue(isActive ? 11 : 12);
-    const labelY    = useSharedValue(isActive ? 0 : 8);
+    const labelSize = useSharedValue(isActive ? 11 : 13);
+    const labelY = useSharedValue(isActive ? 0 : 7);
 
     useEffect(() => {
-      const cfg = { duration: 180 };
-      labelSize.value = withTiming(isActive ? 11 : 12, cfg);
-      labelY.value    = withTiming(isActive ? 0 : 8,   cfg);
+      const cfg = { duration: 160 };
+      labelSize.value = withTiming(isActive ? 11 : 13, cfg);
+      labelY.value = withTiming(isActive ? 0 : 7, cfg);
     }, [isActive]);
 
-    // ── Label color animation ─────────────────────────────────────────────────
     const cm = useSharedValue(colorMode(error, success, isFocused));
 
     useEffect(() => {
-      cm.value = withTiming(colorMode(error, success, isFocused), { duration: 150 });
+      cm.value = withTiming(colorMode(error, success, isFocused), { duration: 140 });
     }, [error, success, isFocused]);
 
     const labelAnimStyle = useAnimatedStyle(() => ({
-      fontSize:  labelSize.value,
+      fontSize: labelSize.value,
       transform: [{ translateY: labelY.value }],
-      color: interpolateColor(
-        cm.value,
-        [0, 1, 2, 3],
-        [palette[0], palette[1], palette[2], palette[3]],
-      ),
+      color: interpolateColor(cm.value, [0, 1, 2, 3], [...palette]),
+      fontFamily: activeFontFamily({ fontWeight: "600" }),
     }));
 
-    const handleFocus = (e: any) => {
-      setIsFocused(true);
-      onFocus?.(e);
-    };
+    const fieldBg = error
+      ? colors.negativeSoft
+      : success
+        ? colors.positiveSoft
+        : isFocused
+          ? colors.surface
+          : colors.subtle;
 
-    const handleBlur = (e: any) => {
-      setIsFocused(false);
-      onBlur?.(e);
-    };
-
-    const handleChangeText = (text: string) => {
-      setInternalValue(text);
-      onChangeText?.(text);
-    };
+    const fieldBorder = error
+      ? colors.negative
+      : success
+        ? colors.positive
+        : isFocused
+          ? colors.brand
+          : "transparent";
 
     return (
       <View className={cn("w-full gap-1.5", wrapClassName)}>
-        {/* Tapping anywhere in the container (label, padding) focuses the input */}
         <Pressable
           onPress={() => internalRef.current?.focus()}
-          className={cn(
-            "flex-row items-center rounded-2xl border px-4 min-h-15",
-            getBorderClasses(error, success, isFocused),
-          )}
-          style={
-            isFocused && !error && !success
-              ? { borderColor: colors.brand }
-              : undefined
-          }
+          className="will-change-pressable min-h-[56px] flex-row items-center rounded-[16px] border-[1.5px] px-4"
+          style={{ backgroundColor: fieldBg, borderColor: fieldBorder }}
         >
-          {leadingNode && <View className="mr-3">{leadingNode}</View>}
+          {leadingNode ? <View className="mr-3">{leadingNode}</View> : null}
 
-          {/* Label + TextInput column */}
-          <View className="flex-1 justify-center py-2 min-h-10">
-            {label && (
-              <Animated.Text style={labelAnimStyle} className="font-bold tracking-wider mb-0.5">
+          <View className="min-h-11 flex-1 justify-center py-2">
+            {label ? (
+              <Animated.Text style={labelAnimStyle} className="mb-0.5 font-semibold tracking-wide">
                 {label}
-                {required && <Text className="text-red-500"> *</Text>}
+                {required ? <AppText style={{ color: colors.negative }}> *</AppText> : null}
               </Animated.Text>
-            )}
+            ) : null}
             <TextInput
               ref={mergeRef}
-              className={cn(
-                "text-base text-gray-900 p-0 m-0",
-                label && "mt-0.5",
-                safeClassName,
-              )}
-              style={[textAlign ? { textAlign } : null, style]}
-              placeholderTextColor="#9ca3af"
-              onFocus={handleFocus}
-              onBlur={handleBlur}
-              onChangeText={handleChangeText}
+              className={cn("m-0 p-0 text-[17px] text-ink", label && "mt-0.5", safeClassName)}
+              style={[
+                {
+                  color: colors.ink,
+                  fontFamily: activeFontFamily({ fontWeight: "400" }),
+                  fontWeight: "normal",
+                },
+                textAlign ? { textAlign } : null,
+                style,
+              ]}
+              placeholderTextColor={colors.faint}
+              onFocus={(e) => {
+                setIsFocused(true);
+                onFocus?.(e);
+              }}
+              onBlur={(e) => {
+                setIsFocused(false);
+                onBlur?.(e);
+              }}
+              onChangeText={(text) => {
+                setInternalValue(text);
+                onChangeText?.(text);
+              }}
               secureTextEntry={secureTextEntry}
               value={value}
               defaultValue={defaultValue}
@@ -230,33 +192,27 @@ export const Input = forwardRef<TextInput, InputProps>(
             />
           </View>
 
-          {/* Trailing node + validation icons */}
-          <View className="flex-row items-center gap-2 ml-3">
+          <View className="ml-3 flex-row items-center gap-2">
             {trailingNode}
-            {error && (
-              <WarningCircleIcon size={20} color="#f85252" weight="fill" />
-            )}
-            {!error && success && (
-              <CheckCircleIcon size={20} color="#3db077" weight="fill" />
-            )}
+            {error ? (
+              <WarningCircleIcon size={20} color={colors.negative} weight="fill" />
+            ) : null}
+            {!error && success ? (
+              <CheckCircleIcon size={20} color={colors.positive} weight="fill" />
+            ) : null}
           </View>
         </Pressable>
 
-        {/* Hint / error / success text */}
-        {(hint || error || success) && (
-          <Text
-            className={cn(
-              "text-sm px-2",
-              error
-                ? "text-red-500"
-                : success
-                  ? "text-green-600"
-                  : "text-gray-500",
-            )}
+        {hint || error || success ? (
+          <AppText
+            className="px-2 text-[13px]"
+            style={{
+              color: error ? colors.negative : success ? colors.positive : colors.muted,
+            }}
           >
             {error || success || hint}
-          </Text>
-        )}
+          </AppText>
+        ) : null}
       </View>
     );
   },
@@ -264,11 +220,10 @@ export const Input = forwardRef<TextInput, InputProps>(
 
 Input.displayName = "Input";
 
-// ── Password variant ──────────────────────────────────────────────────────────
-
 export function PasswordInput(
   props: Omit<InputProps, "secureTextEntry" | "trailingNode">,
 ) {
+  const colors = useThemeColors();
   const [visible, setVisible] = useState(false);
 
   return (
@@ -277,19 +232,17 @@ export function PasswordInput(
       secureTextEntry={!visible}
       trailingNode={
         <Pressable
-          // stopPropagation prevents the outer container Pressable from also
-          // firing and stealing focus when the user taps the eye toggle
           onPress={(e) => {
             e.stopPropagation();
             setVisible((v) => !v);
           }}
-          className="p-1 opacity-80 active:opacity-100"
+          className="p-1 active:opacity-60"
           hitSlop={8}
         >
           {visible ? (
-            <EyeIcon size={22} color="#6b7280" />
+            <EyeIcon size={20} color={colors.muted} />
           ) : (
-            <EyeSlashIcon size={22} color="#6b7280" />
+            <EyeSlashIcon size={20} color={colors.muted} />
           )}
         </Pressable>
       }

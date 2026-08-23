@@ -1,9 +1,7 @@
 /**
  * components/ui/progress.tsx
  *
- * Budget bars. The fill animates from wherever it was so a refetch nudges the
- * bar rather than snapping it, and over-budget bars clamp at full width while
- * the label keeps telling the truth.
+ * Soft track + rounded fill — Material progress language.
  */
 
 import { cn } from "@/lib/cn";
@@ -17,10 +15,8 @@ import Animated, {
 } from "react-native-reanimated";
 
 export interface ProgressBarProps {
-  /** 0–1, values above 1 are clamped for the fill only. */
   ratio: number;
   color?: string;
-  /** Height in pixels. */
   height?: number;
   trackClassName?: string;
   className?: string;
@@ -29,7 +25,7 @@ export interface ProgressBarProps {
 export function ProgressBar({
   ratio,
   color,
-  height = 8,
+  height = 6,
   trackClassName,
   className,
 }: ProgressBarProps) {
@@ -39,7 +35,7 @@ export function ProgressBar({
   const width = useSharedValue(0);
 
   useEffect(() => {
-    width.value = withTiming(clamped, { duration: 420 });
+    width.value = withTiming(clamped, { duration: 480 });
   }, [clamped, width]);
 
   const fillStyle = useAnimatedStyle(() => ({
@@ -48,7 +44,7 @@ export function ProgressBar({
 
   return (
     <View
-      className={cn("overflow-hidden rounded-full bg-gray-100", trackClassName, className)}
+      className={cn("overflow-hidden rounded-full bg-subtle", trackClassName, className)}
       style={{ height }}
     >
       <Animated.View
@@ -59,13 +55,9 @@ export function ProgressBar({
   );
 }
 
-/**
- * Stacked segments of one bar — used for the shared ledger's per-person split,
- * where the parts add up to the month's spend.
- */
 export function StackedBar({
   segments,
-  height = 10,
+  height = 8,
   className,
 }: {
   segments: { key: string; share: number; color: string }[];
@@ -76,7 +68,7 @@ export function StackedBar({
 
   return (
     <View
-      className={cn("flex-row overflow-hidden rounded-full bg-gray-100", className)}
+      className={cn("flex-row overflow-hidden rounded-full bg-subtle", className)}
       style={{ height }}
     >
       {visible.map((segment, index) => (
@@ -85,7 +77,7 @@ export function StackedBar({
           style={{
             flex: segment.share,
             backgroundColor: segment.color,
-            marginLeft: index === 0 ? 0 : 2,
+            marginLeft: index === 0 ? 0 : 1.5,
           }}
         />
       ))}

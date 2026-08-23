@@ -10,7 +10,8 @@
 
 import { cn } from "@/lib/cn";
 import React, { useEffect } from "react";
-import { Pressable, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Pressable, View } from "react-native";
 import Animated, {
   interpolateColor,
   useAnimatedProps,
@@ -162,23 +163,23 @@ export function Checkbox({
       {(label || hint || error) && (
         <View className="flex-1 gap-0.5 pt-0.5">
           {label && (
-            <Text
+            <AppText
               className={cn(
                 "text-base text-gray-900 leading-snug",
                 disabled && "text-gray-400",
               )}
             >
               {label}
-            </Text>
+            </AppText>
           )}
           {error ? (
-            <Text className="text-[12px] text-red-500 leading-snug">
+            <AppText className="text-[12px] text-red-500 leading-snug">
               {error}
-            </Text>
+            </AppText>
           ) : hint ? (
-            <Text className="text-[12px] text-gray-400 leading-snug">
+            <AppText className="text-[12px] text-gray-400 leading-snug">
               {hint}
-            </Text>
+            </AppText>
           ) : null}
         </View>
       )}
@@ -203,12 +204,12 @@ export function CheckboxGroup({
   return (
     <View className={cn("gap-3", className)}>
       {label && (
-        <Text className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+        <AppText className="text-sm font-bold text-gray-400 uppercase tracking-wider">
           {label}
-        </Text>
+        </AppText>
       )}
       {children}
-      {error && <Text className="text-sm text-red-500 px-1">{error}</Text>}
+      {error && <AppText className="text-sm text-red-500 px-1">{error}</AppText>}
     </View>
   );
 }

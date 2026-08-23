@@ -16,14 +16,13 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, Section } from "@/components/ui/card";
 import { ProgressBar, StackedBar } from "@/components/ui/progress";
-import { EmptyState, ErrorNote, LoadingState, Screen, ScreenScroll } from "@/components/ui/screen";
+import { EmptyState, ErrorNote, Screen, ScreenScroll } from "@/components/ui/screen";
+import { DashboardSkeleton } from "@/components/ui/shimmer";
 import { TAB_BAR_HEIGHT } from "@/components/ui/tab-bar";
 import { formatMoney, formatPercent } from "@/lib/currency";
 import { monthProgress } from "@/lib/date";
 import { useMonth } from "@/lib/month";
 import {
-  useAccounts,
-  useCoupleBalance,
   useCurrency,
   useMonthOverview,
   useProfile,
@@ -43,7 +42,8 @@ import {
   WalletIcon,
 } from "phosphor-react-native";
 import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Pressable, ScrollView, View } from "react-native";
 
 export default function Home() {
   const { monthKey, setMonthKey } = useMonth();
@@ -52,11 +52,9 @@ export default function Home() {
   const router = useRouter();
 
   const { data: profile } = useProfile();
-  const { overview, rows, isLoading, isRefetching, error, refetch } =
+  const { overview, rows, accounts, couple, isLoading, isRefetching, error, refetch } =
     useMonthOverview(monthKey);
   const views = useTransactionViews(rows.slice(0, 5));
-  const { accounts } = useAccounts();
-  const couple = useCoupleBalance();
   const colors = useThemeColors();
 
   const isShared = scope.kind === "group";
@@ -65,7 +63,30 @@ export default function Home() {
   if (isLoading && !overview) {
     return (
       <Screen>
-        <LoadingState label="Loading your ledger" />
+        <ScreenScroll bottomInset={TAB_BAR_HEIGHT + 24} contentContainerStyle={{ paddingTop: 8 }}>
+          <View className="flex-row items-end justify-between gap-3">
+            <View className="flex-1 gap-2">
+              <AppText className="text-[13px] font-medium text-muted">
+                {greeting()}, {firstName}
+              </AppText>
+              <AppText className="text-[28px] font-bold leading-8 tracking-tight text-ink">
+                Overview
+              </AppText>
+              <LedgerSwitcher />
+            </View>
+            <Link href="/profile" asChild>
+              <Pressable hitSlop={8} className="active:opacity-80">
+                <Avatar
+                  name={profile?.display_name ?? "Me"}
+                  color={profile?.color}
+                  uri={profile?.avatar_url}
+                  size="lg"
+                />
+              </Pressable>
+            </Link>
+          </View>
+          <DashboardSkeleton />
+        </ScreenScroll>
       </Screen>
     );
   }
@@ -79,14 +100,19 @@ export default function Home() {
         contentContainerStyle={{ paddingTop: 8 }}
       >
         {/* ── Greeting ─────────────────────────────────────────────────── */}
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 gap-1.5">
-            <Text className="text-sm text-gray-500">{greeting()}, {firstName}</Text>
+        <View className="flex-row items-end justify-between gap-3">
+          <View className="flex-1 gap-2">
+            <AppText className="text-[13px] font-medium text-muted">
+              {greeting()}, {firstName}
+            </AppText>
+            <AppText className="text-[28px] font-bold leading-8 tracking-tight text-ink">
+              Overview
+            </AppText>
             <LedgerSwitcher />
           </View>
 
           <Link href="/profile" asChild>
-            <Pressable hitSlop={8}>
+            <Pressable hitSlop={8} className="active:opacity-80">
               <Avatar
                 name={profile?.display_name ?? "Me"}
                 color={profile?.color}
@@ -100,30 +126,52 @@ export default function Home() {
         {error ? <ErrorNote message={error.message} onRetry={refetch} /> : null}
 
         {/* ── Hero ─────────────────────────────────────────────────────── */}
-        <View className="overflow-hidden rounded-[28px]">
+        <View
+          className="overflow-hidden rounded-[26px]"
+          style={{
+            shadowColor: colors.chrome,
+            shadowOpacity: colors.heroInverted ? 0.35 : 0.08,
+            shadowRadius: 20,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 4,
+          }}
+        >
           <LinearGradient
             colors={colors.gradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{ padding: 20 }}
+            style={{ padding: 22 }}
           >
             <View className="flex-row items-start justify-between">
-              <Text className="text-sm font-medium text-white/70">
+              <AppText
+                className="text-sm font-medium"
+                style={{ color: colors.onGradientMuted }}
+              >
                 {isShared ? "Household spending" : "You've spent"}
-              </Text>
-              <MonthSwitcher monthKey={monthKey} onChange={setMonthKey} inverted />
+              </AppText>
+              <MonthSwitcher
+                monthKey={monthKey}
+                onChange={setMonthKey}
+                inverted={colors.heroInverted}
+              />
             </View>
 
             <View className="mt-3 flex-row items-end justify-between">
-              <Text className="text-[42px] font-bold leading-tight tracking-tighter tabular-nums text-white">
+              <AppText
+                className="text-[44px] font-bold leading-none tracking-tighter tabular-nums"
+                style={{ color: colors.onGradient }}
+              >
                 {formatMoney(overview?.totals.spent ?? 0, currency)}
-              </Text>
+              </AppText>
             </View>
 
             <ChangeChip
               changeRatio={overview?.changeRatio ?? null}
               previous={overview?.previousSpent ?? 0}
               currency={currency}
+              ink={colors.onGradient}
+              muted={colors.onGradientMuted}
+              inverted={colors.heroInverted}
             />
 
             <View className="mt-5 flex-row gap-3">
@@ -131,17 +179,37 @@ export default function Home() {
                 label="Money in"
                 amount={overview?.totals.earned ?? 0}
                 currency={currency}
-                icon={<ArrowDownRightIcon size={13} color="#6ec99a" weight="bold" />}
+                ink={colors.onGradient}
+                muted={colors.onGradientMuted}
+                inverted={colors.heroInverted}
+                icon={
+                  <ArrowDownRightIcon
+                    size={13}
+                    color={colors.heroInverted ? "#6ec99a" : colors.positive}
+                    weight="bold"
+                  />
+                }
               />
               <HeroStat
                 label={(overview?.totals.net ?? 0) >= 0 ? "Left over" : "Overspent"}
                 amount={Math.abs(overview?.totals.net ?? 0)}
                 currency={currency}
+                ink={colors.onGradient}
+                muted={colors.onGradientMuted}
+                inverted={colors.heroInverted}
                 icon={
                   (overview?.totals.net ?? 0) >= 0 ? (
-                    <TrendUpIcon size={13} color="#6ec99a" weight="bold" />
+                    <TrendUpIcon
+                      size={13}
+                      color={colors.heroInverted ? "#6ec99a" : colors.positive}
+                      weight="bold"
+                    />
                   ) : (
-                    <TrendDownIcon size={13} color="#ff8585" weight="bold" />
+                    <TrendDownIcon
+                      size={13}
+                      color={colors.heroInverted ? "#ff8585" : colors.negative}
+                      weight="bold"
+                    />
                   )
                 }
               />
@@ -150,31 +218,40 @@ export default function Home() {
         </View>
 
         {/* ── Couple / household balances ─────────────────────────────── */}
-        {isShared && couple.data && couple.data.perMember.length > 0 ? (
-          <Section title="Together">
+        {isShared && couple && couple.perMember.length > 0 ? (
+          <Section
+            title="Together"
+            action={
+              couple.perMember.length >= 2 ? (
+                <Pressable onPress={() => router.push("/chat" as never)} hitSlop={8}>
+                  <AppText className="text-[13px] font-semibold text-brand">Chat</AppText>
+                </Pressable>
+              ) : null
+            }
+          >
             <Card>
               <View className="flex-row items-end justify-between">
                 <View className="flex-1">
-                  <Text className="text-xs font-bold uppercase tracking-widest text-faint">
+                  <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
                     Combined balance
-                  </Text>
+                  </AppText>
                   <Money
-                    amount={couple.data.total}
+                    amount={couple.total}
                     currency={currency}
                     size="xl"
                     className="mt-1"
                   />
-                  <Text className="mt-1 text-sm text-muted">
+                  <AppText className="mt-1 text-sm text-muted">
                     Opening{" "}
-                    {formatMoney(couple.data.openingTotal, currency)}
+                    {formatMoney(couple.openingTotal, currency)}
                     {" · "}
                     both of you
-                  </Text>
+                  </AppText>
                 </View>
               </View>
 
               <View className="mt-5 gap-3 border-t border-hairline pt-4">
-                {couple.data.perMember.map((entry) => (
+                {couple.perMember.map((entry) => (
                   <View key={entry.member.id} className="flex-row items-center gap-3">
                     <Avatar
                       name={entry.member.name}
@@ -182,12 +259,12 @@ export default function Home() {
                       size="sm"
                     />
                     <View className="flex-1">
-                      <Text className="text-sm font-semibold text-ink">
+                      <AppText className="text-sm font-semibold text-ink">
                         {entry.member.isSelf ? "You" : entry.member.name}
-                      </Text>
-                      <Text className="text-xs text-muted">
+                      </AppText>
+                      <AppText className="text-xs text-muted">
                         Opened with {formatMoney(entry.openingBalance, currency)}
-                      </Text>
+                      </AppText>
                     </View>
                     <Money amount={entry.balance} currency={currency} />
                   </View>
@@ -240,27 +317,29 @@ export default function Home() {
             action={
               <Link href="/budgets" asChild>
                 <Pressable hitSlop={8}>
-                  <Text className="text-sm font-semibold text-navy-500">Manage</Text>
+                  <AppText className="text-[13px] font-semibold" style={{ color: colors.brand }}>
+                    Manage
+                  </AppText>
                 </Pressable>
               </Link>
             }
           >
             <Card>
               <View className="flex-row items-center justify-between">
-                <Text className="text-base font-bold tracking-tight text-gray-900">
+                <AppText className="text-base font-bold tracking-tight text-ink">
                   {overview.topBudget.label}
-                </Text>
-                <Text
+                </AppText>
+                <AppText
                   className={`text-sm font-bold ${
                     overview.topBudget.health === "over"
-                      ? "text-red-500"
+                      ? "text-negative"
                       : overview.topBudget.health === "caution"
                         ? "text-gold-500"
                         : "text-green-500"
                   }`}
                 >
                   {formatPercent(overview.topBudget.ratio)}
-                </Text>
+                </AppText>
               </View>
 
               <ProgressBar
@@ -277,19 +356,19 @@ export default function Home() {
               />
 
               <View className="mt-3 flex-row justify-between">
-                <Text className="text-sm text-gray-500">
+                <AppText className="text-sm text-muted">
                   {formatMoney(overview.topBudget.spent, currency)} of{" "}
                   {formatMoney(overview.topBudget.limit, currency)}
-                </Text>
-                <Text
+                </AppText>
+                <AppText
                   className={`text-sm font-semibold ${
-                    overview.topBudget.remaining < 0 ? "text-red-500" : "text-gray-700"
+                    overview.topBudget.remaining < 0 ? "text-negative" : "text-ink"
                   }`}
                 >
                   {overview.topBudget.remaining < 0
                     ? `${formatMoney(-overview.topBudget.remaining, currency)} over`
                     : `${formatMoney(overview.topBudget.remaining, currency)} left`}
-                </Text>
+                </AppText>
               </View>
             </Card>
           </Section>
@@ -301,12 +380,12 @@ export default function Home() {
                   <TargetIcon size={22} color="#b45309" weight="duotone" />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-base font-bold tracking-tight text-gray-900">
+                  <AppText className="text-base font-bold tracking-tight text-ink">
                     Set a monthly budget
-                  </Text>
-                  <Text className="mt-0.5 text-sm text-gray-500">
+                  </AppText>
+                  <AppText className="mt-0.5 text-sm text-muted">
                     Get a nudge before the money runs out, not after.
-                  </Text>
+                  </AppText>
                 </View>
               </Card>
             </Pressable>
@@ -320,7 +399,7 @@ export default function Home() {
             action={
               <Link href="/household" asChild>
                 <Pressable hitSlop={8}>
-                  <Text className="text-sm font-semibold text-navy-500">Household</Text>
+                  <AppText className="text-[13px] font-semibold" style={{ color: colors.brand }}>Household</AppText>
                 </Pressable>
               </Link>
             }
@@ -344,21 +423,21 @@ export default function Home() {
                       size="sm"
                     />
                     <View className="flex-1">
-                      <Text className="text-sm font-semibold text-gray-900">
+                      <AppText className="text-sm font-semibold text-ink">
                         {entry.member.isSelf ? "You" : entry.member.name}
-                      </Text>
-                      <Text className="text-xs text-gray-500">
+                      </AppText>
+                      <AppText className="text-xs text-muted">
                         {entry.count} {entry.count === 1 ? "entry" : "entries"}
                         {entry.earned > 0
                           ? ` · ${formatMoney(entry.earned, currency, { compact: true })} in`
                           : ""}
-                      </Text>
+                      </AppText>
                     </View>
                     <View className="items-end">
                       <Money amount={entry.spent} currency={currency} />
-                      <Text className="text-xs text-gray-400">
+                      <AppText className="text-xs text-faint">
                         {Math.round(entry.share * 100)}%
-                      </Text>
+                      </AppText>
                     </View>
                   </View>
                 ))}
@@ -374,7 +453,7 @@ export default function Home() {
             action={
               <Link href="/(app)/(tabs)/insights" asChild>
                 <Pressable hitSlop={8}>
-                  <Text className="text-sm font-semibold text-navy-500">Insights</Text>
+                  <AppText className="text-[13px] font-semibold" style={{ color: colors.brand }}>Insights</AppText>
                 </Pressable>
               </Link>
             }
@@ -391,15 +470,15 @@ export default function Home() {
                   thickness={18}
                 >
                   <View className="items-center">
-                    <Text className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    <AppText className="text-[10px] font-semibold uppercase tracking-wider text-faint">
                       Top
-                    </Text>
-                    <Text
-                      className="max-w-[76px] text-center text-xs font-bold text-gray-900"
+                    </AppText>
+                    <AppText
+                      className="max-w-[76px] text-center text-xs font-bold text-ink"
                       numberOfLines={2}
                     >
                       {overview?.categories[0]?.label}
-                    </Text>
+                    </AppText>
                   </View>
                 </Donut>
 
@@ -420,7 +499,9 @@ export default function Home() {
             action={
               <Link href="/accounts" asChild>
                 <Pressable hitSlop={8}>
-                  <Text className="text-sm font-semibold text-navy-500">Manage</Text>
+                  <AppText className="text-[13px] font-semibold" style={{ color: colors.brand }}>
+                    Manage
+                  </AppText>
                 </Pressable>
               </Link>
             }
@@ -433,7 +514,8 @@ export default function Home() {
               {accounts.map((account) => (
                 <View
                   key={account.id}
-                  className="min-w-[148px] rounded-3xl border border-gray-200/70 bg-white p-4"
+                  className="min-w-[148px] rounded-[22px] p-4"
+                  style={{ backgroundColor: colors.surface }}
                 >
                   <View
                     className="h-8 w-8 items-center justify-center rounded-xl"
@@ -441,17 +523,18 @@ export default function Home() {
                   >
                     <WalletIcon size={16} color={account.color} weight="duotone" />
                   </View>
-                  <Text
-                    className="mt-3 text-sm font-medium text-gray-500"
+                  <AppText
+                    className="mt-3 text-[13px] font-medium"
+                    style={{ color: colors.muted }}
                     numberOfLines={1}
                   >
                     {account.name}
-                  </Text>
+                  </AppText>
                   <Money
                     amount={account.balance}
                     currency={currency}
                     size="lg"
-                    className={account.balance < 0 ? "text-red-500" : undefined}
+                    className={account.balance < 0 ? "text-negative" : undefined}
                   />
                 </View>
               ))}
@@ -466,7 +549,9 @@ export default function Home() {
             action={
               <Link href="/(app)/(tabs)/activity" asChild>
                 <Pressable hitSlop={8}>
-                  <Text className="text-sm font-semibold text-navy-500">See all</Text>
+                  <AppText className="text-[13px] font-semibold" style={{ color: colors.brand }}>
+                    See all
+                  </AppText>
                 </Pressable>
               </Link>
             }
@@ -502,23 +587,38 @@ function HeroStat({
   amount,
   currency,
   icon,
+  ink,
+  muted,
+  inverted,
 }: {
   label: string;
   amount: number;
   currency: string;
   icon: React.ReactNode;
+  ink: string;
+  muted: string;
+  inverted: boolean;
 }) {
   return (
-    <View className="flex-1 rounded-2xl bg-white/10 px-3.5 py-3">
+    <View
+      className="flex-1 rounded-2xl px-3.5 py-3"
+      style={{ backgroundColor: inverted ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.55)" }}
+    >
       <View className="flex-row items-center gap-1.5">
         {icon}
-        <Text className="text-[11px] font-semibold uppercase tracking-wider text-white/60">
+        <AppText
+          className="text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: muted }}
+        >
           {label}
-        </Text>
+        </AppText>
       </View>
-      <Text className="mt-1 text-lg font-bold tracking-tight tabular-nums text-white">
+      <AppText
+        className="mt-1 text-lg font-bold tracking-tight tabular-nums"
+        style={{ color: ink }}
+      >
         {formatMoney(amount, currency)}
-      </Text>
+      </AppText>
     </View>
   );
 }
@@ -527,16 +627,22 @@ function ChangeChip({
   changeRatio,
   previous,
   currency,
+  ink,
+  muted,
+  inverted,
 }: {
   changeRatio: number | null;
   previous: number;
   currency: string;
+  ink: string;
+  muted: string;
+  inverted: boolean;
 }) {
   if (changeRatio === null) {
     return (
-      <Text className="mt-1 text-sm text-white/50">
+      <AppText className="mt-1 text-sm" style={{ color: muted }}>
         {previous === 0 ? "First month on the books" : ""}
-      </Text>
+      </AppText>
     );
   }
 
@@ -545,16 +651,27 @@ function ChangeChip({
   return (
     <View className="mt-1.5 flex-row items-center gap-1.5">
       {up ? (
-        <ArrowUpRightIcon size={13} color="#ff8585" weight="bold" />
+        <ArrowUpRightIcon
+          size={13}
+          color={inverted ? "#ff8585" : "#d64545"}
+          weight="bold"
+        />
       ) : (
-        <ArrowDownRightIcon size={13} color="#6ec99a" weight="bold" />
+        <ArrowDownRightIcon
+          size={13}
+          color={inverted ? "#6ec99a" : "#3d8f64"}
+          weight="bold"
+        />
       )}
-      <Text className="text-sm text-white/70">
-        <Text className={up ? "font-bold text-red-200" : "font-bold text-green-200"}>
+      <AppText className="text-sm" style={{ color: muted }}>
+        <AppText
+          className="font-bold"
+          style={{ color: up ? (inverted ? "#fecaca" : "#d64545") : ink }}
+        >
           {formatPercent(Math.abs(changeRatio))}
-        </Text>{" "}
+        </AppText>{" "}
         {up ? "more" : "less"} than last month
-      </Text>
+      </AppText>
     </View>
   );
 }
@@ -582,24 +699,24 @@ function PaceCard({
     <Card>
       <View className="flex-row items-start justify-between">
         <View>
-          <Text className="text-xs font-bold uppercase tracking-widest text-gray-400">
+          <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
             Pace
-          </Text>
-          <Text className="mt-1.5 text-base text-gray-700">
-            <Text className="font-bold text-gray-900">
+          </AppText>
+          <AppText className="mt-1.5 text-base text-ink">
+            <AppText className="font-bold text-ink">
               {formatMoney(perDay, currency, { compact: true })}
-            </Text>{" "}
+            </AppText>{" "}
             a day
-          </Text>
+          </AppText>
         </View>
 
         <View className="items-end">
-          <Text className="text-xs font-bold uppercase tracking-widest text-gray-400">
+          <AppText className="text-xs font-bold uppercase tracking-widest text-faint">
             On track for
-          </Text>
-          <Text className="mt-1.5 text-base font-bold tracking-tight text-gray-900">
+          </AppText>
+          <AppText className="mt-1.5 text-base font-bold tracking-tight text-ink">
             {formatMoney(projected, currency, { compact: true })}
-          </Text>
+          </AppText>
         </View>
       </View>
 
@@ -607,11 +724,11 @@ function PaceCard({
         <SpendLine days={days} target={budgetLimit ?? undefined} height={80} />
       </View>
 
-      <Text className="mt-2 text-xs text-gray-400">
+      <AppText className="mt-2 text-xs text-faint">
         Day {dayOfMonth} of {totalDays}
         {daysRemaining > 0 ? ` · ${daysRemaining} days left` : " · month complete"}
         {budgetLimit ? ` · amber line is your ${formatMoney(budgetLimit, currency, { compact: true })} budget` : ""}
-      </Text>
+      </AppText>
     </Card>
   );
 }

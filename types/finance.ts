@@ -16,6 +16,7 @@ import type {
   DebtRow,
   GroupRow,
   MemberRole,
+  MessageRow,
   RecurringEntryRow,
   RecurringKind,
   TransactionKind,
@@ -168,6 +169,13 @@ export interface RecurringView extends RecurringEntryRow {
   /** ISO date of the next time this will turn into a transaction. */
   nextPostOn: string;
   postedThisMonth: boolean;
+}
+
+export interface MessageView extends MessageRow {
+  memberName: string;
+  memberColor: string;
+  isSelf: boolean;
+  avatarUrl: string | null;
 }
 
 /** What one person in the ledger is holding. */

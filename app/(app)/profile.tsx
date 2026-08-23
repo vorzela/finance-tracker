@@ -19,7 +19,8 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { CameraIcon, CheckIcon } from "phosphor-react-native";
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { AppText } from "@/components/ui/app-text";
+import { Pressable, ScrollView, View } from "react-native";
 
 const MEMBER_COLORS = [
   "#2a5298",
@@ -126,16 +127,16 @@ export default function Profile() {
             />
             <View className="flex-row items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1.5">
               <CameraIcon size={14} color="#1e3a5f" weight="bold" />
-              <Text className="text-xs font-semibold text-brand">
+              <AppText className="text-xs font-semibold text-brand">
                 {uploadAvatar.isPending ? "Uploading…" : "Change photo"}
-              </Text>
+              </AppText>
             </View>
           </Pressable>
           <View className="items-center">
-            <Text className="text-lg font-bold tracking-tight text-ink">
+            <AppText className="text-lg font-bold tracking-tight text-ink">
               {displayName || "Your name"}
-            </Text>
-            <Text className="text-sm text-muted">{user?.email}</Text>
+            </AppText>
+            <AppText className="text-sm text-muted">{user?.email}</AppText>
           </View>
         </Card>
 
@@ -154,14 +155,14 @@ export default function Profile() {
             className="flex-row items-center justify-between rounded-2xl border border-hairline bg-subtle px-4 py-4 active:bg-subtle"
           >
             <View>
-              <Text className="text-xs font-bold uppercase tracking-wider text-faint">
+              <AppText className="text-xs font-bold uppercase tracking-wider text-faint">
                 Currency
-              </Text>
-              <Text className="mt-1 text-base text-ink">
+              </AppText>
+              <AppText className="mt-1 text-base text-ink">
                 {currencyCode} · {currencySymbol(currencyCode)}
-              </Text>
+              </AppText>
             </View>
-            <Text className="text-sm font-semibold text-brand">Change</Text>
+            <AppText className="text-sm font-semibold text-brand">Change</AppText>
           </Pressable>
         </Card>
 

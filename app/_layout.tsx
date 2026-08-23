@@ -22,6 +22,13 @@ import {
   Fraunces_700Bold,
 } from "@expo-google-fonts/fraunces";
 import {
+  Inter_400Regular,
+  Inter_400Regular_Italic,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from "@expo-google-fonts/inter";
+import {
   Literata_400Regular,
   Literata_400Regular_Italic,
   Literata_600SemiBold,
@@ -40,6 +47,25 @@ import {
   Nunito_700Bold,
 } from "@expo-google-fonts/nunito";
 import {
+  Outfit_400Regular,
+  Outfit_500Medium,
+  Outfit_600SemiBold,
+  Outfit_700Bold,
+} from "@expo-google-fonts/outfit";
+import {
+  PublicSans_400Regular,
+  PublicSans_400Regular_Italic,
+  PublicSans_500Medium,
+  PublicSans_600SemiBold,
+  PublicSans_700Bold,
+} from "@expo-google-fonts/public-sans";
+import {
+  Roboto_400Regular,
+  Roboto_400Regular_Italic,
+  Roboto_500Medium,
+  Roboto_700Bold,
+} from "@expo-google-fonts/roboto";
+import {
   SourceSerif4_400Regular,
   SourceSerif4_400Regular_Italic,
   SourceSerif4_600SemiBold,
@@ -47,15 +73,19 @@ import {
 } from "@expo-google-fonts/source-serif-4";
 import { AccentRoot } from "@/components/ui/accent-root";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { NetworkProvider } from "@/lib/network";
 import { ScopeProvider } from "@/lib/scope";
-import { fontFamilyName, ThemeProvider, useAppearance, useThemeColors } from "@/lib/theme";
-import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider, useAppearance, useThemeColors } from "@/lib/theme";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
+import { focusManager, QueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
-import { AppState, Text, type AppStateStatus } from "react-native";
+import { AppState, View, type AppStateStatus } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -67,16 +97,24 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       staleTime: 30_000,
-      gcTime: 5 * 60_000,
+      gcTime: 1000 * 60 * 60 * 24 * 7,
       refetchOnMount: false,
       refetchOnReconnect: true,
       refetchOnWindowFocus: false,
+      networkMode: "offlineFirst",
     },
     mutations: {
       retry: 0,
-      gcTime: 60_000,
+      gcTime: 1000 * 60 * 60 * 24,
+      networkMode: "always",
     },
   },
+});
+
+const queryPersister = createAsyncStoragePersister({
+  storage: AsyncStorage,
+  key: "duo-wallet.rq-cache",
+  throttleTime: 1500,
 });
 
 focusManager.setEventListener((handleFocus) => {
@@ -89,6 +127,24 @@ function SplashGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
   const { isReady } = useAppearance();
   const [fontsLoaded] = useFonts({
+    PublicSans_400Regular,
+    PublicSans_400Regular_Italic,
+    PublicSans_500Medium,
+    PublicSans_600SemiBold,
+    PublicSans_700Bold,
+    Roboto_400Regular,
+    Roboto_400Regular_Italic,
+    Roboto_500Medium,
+    Roboto_700Bold,
+    Inter_400Regular,
+    Inter_400Regular_Italic,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Outfit_400Regular,
+    Outfit_500Medium,
+    Outfit_600SemiBold,
+    Outfit_700Bold,
     DMSans_400Regular,
     DMSans_400Regular_Italic,
     DMSans_500Medium,
@@ -129,19 +185,10 @@ function SplashGate({ children }: { children: React.ReactNode }) {
 function RootStack() {
   const { scheme, font, italic } = useAppearance();
   const colors = useThemeColors();
-  const fontFamily = fontFamilyName(font, italic);
-
-  useEffect(() => {
-    const TextWithDefaults = Text as typeof Text & {
-      defaultProps?: { style?: object | object[] };
-    };
-    TextWithDefaults.defaultProps = TextWithDefaults.defaultProps ?? {};
-    const prev = TextWithDefaults.defaultProps.style;
-    TextWithDefaults.defaultProps.style = [{ fontFamily }, prev].flat().filter(Boolean);
-  }, [fontFamily]);
+  const fontKey = `${font}:${italic ? "i" : "r"}`;
 
   return (
-    <>
+    <View key={fontKey} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
       <Stack
         screenOptions={{
@@ -154,7 +201,7 @@ function RootStack() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(app)" />
       </Stack>
-    </>
+    </View>
   );
 }
 
@@ -164,17 +211,28 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AccentRoot>
-            <QueryClientProvider client={queryClient}>
-              <AuthProvider>
-                <ScopeProvider>
-                  <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
-                    <SplashGate>
-                      <RootStack />
-                    </SplashGate>
-                  </KeyboardProvider>
-                </ScopeProvider>
-              </AuthProvider>
-            </QueryClientProvider>
+            <PersistQueryClientProvider
+              client={queryClient}
+              persistOptions={{
+                persister: queryPersister,
+                maxAge: 1000 * 60 * 60 * 24 * 7,
+                dehydrateOptions: {
+                  shouldDehydrateQuery: (query) => query.state.status === "success",
+                },
+              }}
+            >
+              <NetworkProvider>
+                <AuthProvider>
+                  <ScopeProvider>
+                    <KeyboardProvider>
+                      <SplashGate>
+                        <RootStack />
+                      </SplashGate>
+                    </KeyboardProvider>
+                  </ScopeProvider>
+                </AuthProvider>
+              </NetworkProvider>
+            </PersistQueryClientProvider>
           </AccentRoot>
         </ThemeProvider>
       </SafeAreaProvider>

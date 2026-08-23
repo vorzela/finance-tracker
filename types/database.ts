@@ -115,6 +115,21 @@ export type RecurringEntryRow = {
   updated_at: string;
 };
 
+export type MessageRow = {
+  id: string;
+  group_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+};
+
+export type PushTokenRow = {
+  user_id: string;
+  token: string;
+  platform: string | null;
+  updated_at: string;
+};
+
 export type BudgetRow = {
   id: string;
   user_id: string;
@@ -157,13 +172,13 @@ export type Database = {
       };
       accounts: {
         Row: AccountRow;
-        Insert: Insert<AccountRow, "owner_id" | "name">;
+        Insert: Insert<AccountRow, "owner_id" | "name"> & { id?: string };
         Update: Partial<Omit<AccountRow, "id" | "created_at">>;
         Relationships: [];
       };
       transactions: {
         Row: TransactionRow;
-        Insert: Insert<TransactionRow, "user_id" | "kind" | "amount">;
+        Insert: Insert<TransactionRow, "user_id" | "kind" | "amount"> & { id?: string };
         Update: Partial<Omit<TransactionRow, "id" | "created_at">>;
         Relationships: [];
       };
@@ -183,6 +198,23 @@ export type Database = {
         Row: RecurringEntryRow;
         Insert: Insert<RecurringEntryRow, "user_id" | "kind" | "label" | "amount">;
         Update: Partial<Omit<RecurringEntryRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      messages: {
+        Row: MessageRow;
+        Insert: Insert<MessageRow, "group_id" | "user_id" | "body"> & { id?: string };
+        Update: Partial<Omit<MessageRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      push_tokens: {
+        Row: PushTokenRow;
+        Insert: {
+          user_id: string;
+          token: string;
+          platform?: string | null;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<PushTokenRow, "user_id">>;
         Relationships: [];
       };
     };
@@ -214,6 +246,25 @@ export type Database = {
       debt_balances: {
         Args: { p_group_id?: string | null };
         Returns: { debt_id: string; paid: number; balance: number }[];
+      };
+      month_history: {
+        Args: {
+          p_group_id?: string | null;
+          p_from?: string;
+          p_until?: string;
+          p_tz?: string;
+        };
+        Returns: { month_key: string; spent: number; earned: number }[];
+      };
+      ledger_home: {
+        Args: {
+          p_group_id?: string | null;
+          p_from?: string;
+          p_until?: string;
+          p_history_from?: string;
+          p_tz?: string;
+        };
+        Returns: Record<string, unknown>;
       };
       post_due_recurring: {
         Args: Record<PropertyKey, never>;
