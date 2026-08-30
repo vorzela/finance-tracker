@@ -54,6 +54,24 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
+/** Rejects if `promise` doesn't settle within `ms`, so a stalled auth/network
+ * call can never leave the caller waiting forever. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -67,32 +85,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let stopRefresh: (() => void) | undefined;
 
     (async () => {
-      const resolved = await initSupabase();
-      if (cancelled) return;
+      try {
+        const resolved = await initSupabase();
+        if (cancelled) return;
 
-      if (!resolved) {
-        setSource(null);
-        setStatus("unconfigured");
-        return;
+        if (!resolved) {
+          setSource(null);
+          setStatus("unconfigured");
+          return;
+        }
+
+        setSource(resolved);
+        const client = supabase();
+
+        // getSession() should resolve from local storage almost instantly, but
+        // a bad network or a stalled first-run token refresh must never be
+        // able to leave `status` stuck on "loading" forever — that freezes
+        // the splash screen indefinitely. Race it against a timeout.
+        const { data } = await withTimeout(
+          client.auth.getSession(),
+          8000,
+          "getSession timed out",
+        );
+        if (cancelled) return;
+
+        setSession(data.session ?? null);
+        setStatus(data.session ? "signedIn" : "signedOut");
+
+        const listener = client.auth.onAuthStateChange((_event, next) => {
+          setSession(next ?? null);
+          setStatus(next ? "signedIn" : "signedOut");
+          // Cached rows belong to the previous user; never show them to the next.
+          if (!next) queryClient.clear();
+        });
+        unsubscribe = () => listener.data.subscription.unsubscribe();
+        stopRefresh = startAutoRefresh();
+      } catch (err) {
+        if (cancelled) return;
+        // Any failure here (network error, bad/stale stored credentials,
+        // timeout) must still unblock the splash screen. Fall back to
+        // signed-out rather than leaving the app hung on "loading".
+        console.warn("[auth] session init failed, falling back to signedOut:", err);
+        setSession(null);
+        setStatus("signedOut");
       }
-
-      setSource(resolved);
-      const client = supabase();
-
-      const { data } = await client.auth.getSession();
-      if (cancelled) return;
-
-      setSession(data.session ?? null);
-      setStatus(data.session ? "signedIn" : "signedOut");
-
-      const listener = client.auth.onAuthStateChange((_event, next) => {
-        setSession(next ?? null);
-        setStatus(next ? "signedIn" : "signedOut");
-        // Cached rows belong to the previous user; never show them to the next.
-        if (!next) queryClient.clear();
-      });
-      unsubscribe = () => listener.data.subscription.unsubscribe();
-      stopRefresh = startAutoRefresh();
     })();
 
     return () => {

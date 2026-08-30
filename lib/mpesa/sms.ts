@@ -46,15 +46,15 @@ export function canReadSmsNative(): boolean {
 export async function requestSmsPermission(): Promise<boolean> {
   if (Platform.OS !== "android") return false;
 
-  const granted = await PermissionsAndroid.requestMultiple([
+  // Only READ_SMS is needed: the inbox is read on demand via SmsAndroid.list.
+  // RECEIVE_SMS would only be needed to listen for *live* incoming SMS, which
+  // this app never does — requesting it anyway is an unused dangerous
+  // permission that adds risk without adding functionality.
+  const granted = await PermissionsAndroid.request(
     PermissionsAndroid.PERMISSIONS.READ_SMS,
-    PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
-  ]);
-
-  return (
-    granted[PermissionsAndroid.PERMISSIONS.READ_SMS] ===
-    PermissionsAndroid.RESULTS.GRANTED
   );
+
+  return granted === PermissionsAndroid.RESULTS.GRANTED;
 }
 
 export async function hasSmsPermission(): Promise<boolean> {
