@@ -11,6 +11,7 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { File } from "expo-file-system";
 import { addMonths, currentMonthKey, monthKeyOf, monthRange } from "@/lib/date";
 import { fillMonthHistory } from "@/lib/analytics";
 import {
@@ -182,14 +183,26 @@ export async function updateProfile(
 
 /** Uploads a local image to the public `avatars` bucket and returns its URL. */
 export async function uploadAvatar(userId: string, localUri: string): Promise<string> {
-  const response = await fetch(localUri);
-  const blob = await response.blob();
+  // Deliberately NOT fetch(localUri).then(r => r.blob()): React Native's Blob
+  // polyfill is unreliable when a blob obtained from a local file fetch is
+  // re-uploaded as a request body — it frequently throws a bare "Network
+  // request failed" even on a perfectly good connection, which is what was
+  // showing up in the UI as a false "no connection" error. Reading the file
+  // as bytes via expo-file-system and uploading those directly avoids the
+  // Blob round-trip entirely.
   const ext = (localUri.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
   const path = `${userId}/${Date.now()}.${ext}`;
 
-  const { error } = await supabase().storage.from("avatars").upload(path, blob, {
+  let bytes: Uint8Array;
+  try {
+    bytes = await new File(localUri).bytes();
+  } catch (err) {
+    throw new Error("Couldn't read that photo. Try picking it again.");
+  }
+
+  const { error } = await supabase().storage.from("avatars").upload(path, bytes, {
     upsert: true,
-    contentType: blob.type || `image/${ext}`,
+    contentType: `image/${ext === "jpg" ? "jpeg" : ext}`,
   });
   if (error) fail(error, "upload your photo");
 
