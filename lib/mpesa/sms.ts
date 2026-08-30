@@ -66,8 +66,14 @@ export async function hasSmsPermission(): Promise<boolean> {
  * Lists recent inbox SMS for M-Pesa / Fuliza / M-Shwari / Ziidi / Pochi, one
  * row per confirmation code. Resolves to [] when permission or the native
  * module is missing — the UI then falls back to paste / manual entry.
+ *
+ * `minDate`, when given (epoch ms), is passed straight to the native SMS
+ * query so messages older than that are never even read off the device —
+ * not just filtered out afterward. Useful both for "don't show me years of
+ * old texts" and, since READ_SMS is a sensitive permission, for reading as
+ * little of the inbox as actually needed.
  */
-export function listMpesaSms(limit = 40): Promise<SmsMessage[]> {
+export function listMpesaSms(limit = 40, minDate?: number): Promise<SmsMessage[]> {
   const SmsAndroid = getSmsAndroid();
   if (!SmsAndroid) return Promise.resolve([]);
 
@@ -75,6 +81,7 @@ export function listMpesaSms(limit = 40): Promise<SmsMessage[]> {
     box: "inbox",
     maxCount: Math.max(limit * 4, 80),
     indexFrom: 0,
+    ...(minDate ? { minDate } : {}),
   });
 
   return new Promise((resolve) => {

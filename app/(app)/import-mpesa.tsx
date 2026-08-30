@@ -25,7 +25,7 @@ import {
   composeCategoryNote,
   getCategory,
 } from "@/lib/categories";
-import { currentMonthKey } from "@/lib/date";
+import { currentMonthKey, shortWhenLabel } from "@/lib/date";
 import { formatMoney } from "@/lib/currency";
 import { getErrorMessage } from "@/lib/error";
 import {
@@ -45,19 +45,24 @@ import {
 } from "@/lib/mpesa/sms";
 import { useAccounts, useCurrency, useSaveTransaction, useTransactions } from "@/lib/queries";
 import { useScope } from "@/lib/scope";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import {
   ChatTeardropTextIcon,
   ClipboardTextIcon,
+  ClockCountdownIcon,
   PlusIcon,
   PlugsIcon,
 } from "phosphor-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AppText } from "@/components/ui/app-text";
 import { Platform, Pressable, View } from "react-native";
+import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import type { Account } from "@/types/finance";
 import type { TransactionKind } from "@/types/database";
+
+const READ_FROM_KEY_PREFIX = "duo-wallet.mpesa-read-from.";
 
 function pickAccount(accounts: Account[], product: ParsedMpesa["product"]): Account | null {
   const named = (needle: string) =>
@@ -148,8 +153,28 @@ export default function ImportMpesa() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loadingSms, setLoadingSms] = useState(false);
+  /** Only read SMS from this point on, epoch ms. `null` = no cutoff. */
+  const [readFrom, setReadFrom] = useState<number | null>(null);
+  const [readFromLoaded, setReadFromLoaded] = useState(false);
 
   const native = canReadSmsNative();
+
+  // Load the remembered cutoff once we know who's signed in, so it doesn't
+  // briefly flash "no cutoff" before defaulting back to the saved choice.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const raw = await AsyncStorage.getItem(READ_FROM_KEY_PREFIX + user.id).catch(() => null);
+      if (cancelled) return;
+      const parsed = raw ? Number(raw) : NaN;
+      setReadFrom(Number.isFinite(parsed) ? parsed : null);
+      setReadFromLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const importedCodes = useMemo(() => {
     const codes = new Set<string>();
@@ -170,15 +195,49 @@ export default function ImportMpesa() {
         setMessages([]);
         return;
       }
-      setMessages(await listMpesaSms(40));
+      setMessages(await listMpesaSms(40, readFrom ?? undefined));
     } finally {
       setLoadingSms(false);
     }
-  }, [native]);
+  }, [native, readFrom]);
 
   useEffect(() => {
+    // Wait for the persisted cutoff to load first, so we don't fetch once
+    // with no cutoff and again a moment later once it loads.
+    if (!readFromLoaded) return;
     void refreshInbox();
-  }, [refreshInbox]);
+  }, [refreshInbox, readFromLoaded]);
+
+  const persistReadFrom = async (next: number | null) => {
+    setReadFrom(next);
+    if (!user) return;
+    const key = READ_FROM_KEY_PREFIX + user.id;
+    if (next === null) await AsyncStorage.removeItem(key).catch(() => {});
+    else await AsyncStorage.setItem(key, String(next)).catch(() => {});
+  };
+
+  const openReadFromPicker = () => {
+    // Same imperative date-then-time chaining as app/(app)/entry.tsx — the
+    // declarative <DateTimePicker> crashes on unmount on some Android
+    // versions, so this app never uses it directly on Android.
+    const base = readFrom ? new Date(readFrom) : new Date();
+    DateTimePickerAndroid.open({
+      value: base,
+      mode: "date",
+      maximumDate: new Date(),
+      onValueChange: (_event, pickedDate) => {
+        DateTimePickerAndroid.open({
+          value: pickedDate,
+          mode: "time",
+          onValueChange: (_timeEvent, pickedTime) => {
+            void persistReadFrom(pickedTime.getTime());
+          },
+        });
+      },
+    });
+  };
+
+  const clearReadFrom = () => void persistReadFrom(null);
 
   const openCategorize = (item: ParsedMpesa) => {
     setError(null);
@@ -339,45 +398,79 @@ export default function ImportMpesa() {
                     </View>
                   }
                 />
-              ) : visibleMessages.length === 0 ? (
-                <AppText className="text-sm text-muted">
-                  {loadingSms
-                    ? "Reading inbox…"
-                    : "No new wallet SMS (or already imported). Paste below or add manually."}
-                </AppText>
               ) : (
                 <View className="gap-3">
-                  {visibleMessages.map((message) => (
+                  <View className="flex-row items-center gap-2 rounded-2xl border border-hairline bg-subtle px-4 py-3">
+                    <ClockCountdownIcon size={20} color="#9ca3af" />
+                    <View className="flex-1">
+                      <AppText className="text-[10px] font-bold uppercase tracking-wider text-faint">
+                        Reading since
+                      </AppText>
+                      <AppText className="mt-0.5 text-sm font-semibold text-ink">
+                        {readFrom ? shortWhenLabel(new Date(readFrom).toISOString()) : "All messages"}
+                      </AppText>
+                    </View>
                     <Pressable
-                      key={message.id}
-                      onPress={() => openCategorize(message.parsed)}
-                      className="rounded-2xl border border-hairline bg-subtle px-4 py-3 active:opacity-80"
+                      onPress={openReadFromPicker}
+                      className="rounded-full bg-brand-soft px-3 py-1.5 active:opacity-80"
                     >
-                      <View className="flex-row items-center justify-between gap-2">
-                        <AppText className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
-                          {message.parsed.note}
-                        </AppText>
-                        <AppText className="text-[10px] font-bold uppercase tracking-wider text-faint">
-                          {productLabel(message.parsed.product)}
-                        </AppText>
-                      </View>
-                      <AppText className="mt-1 text-xs text-brand">
-                        {productHint(message.parsed.product)}
-                      </AppText>
-                      {message.parsed.reference ? (
-                        <AppText className="mt-1 text-xs font-semibold text-muted">
-                          Code {message.parsed.reference}
-                        </AppText>
-                      ) : null}
-                      <AppText className="mt-2 text-sm font-bold text-brand">
-                        {message.parsed.kind === "income" ? "+" : "−"}
-                        {formatMoney(message.parsed.amount, currency)}
-                        {message.parsed.feeAmount > 0
-                          ? ` · fee ${formatMoney(message.parsed.feeAmount, currency)}`
-                          : ""}
-                      </AppText>
+                      <AppText className="text-xs font-bold text-brand">Change</AppText>
                     </Pressable>
-                  ))}
+                    {readFrom ? (
+                      <Pressable
+                        onPress={clearReadFrom}
+                        className="rounded-full bg-subtle px-3 py-1.5 active:opacity-80"
+                      >
+                        <AppText className="text-xs font-bold text-muted">Clear</AppText>
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  {visibleMessages.length === 0 ? (
+                    <AppText className="text-sm text-muted">
+                      {loadingSms
+                        ? "Reading inbox…"
+                        : "No new wallet SMS in that range (or already imported). Paste below or add manually."}
+                    </AppText>
+                  ) : (
+                    <>
+                      {visibleMessages.map((message) => (
+                        <Pressable
+                          key={message.id}
+                          onPress={() => openCategorize(message.parsed)}
+                          className="rounded-2xl border border-hairline bg-subtle px-4 py-3 active:opacity-80"
+                        >
+                          <View className="flex-row items-center justify-between gap-2">
+                            <AppText className="flex-1 text-sm font-semibold text-ink" numberOfLines={1}>
+                              {message.parsed.note}
+                            </AppText>
+                            <AppText className="text-[10px] font-bold uppercase tracking-wider text-faint">
+                              {productLabel(message.parsed.product)}
+                            </AppText>
+                          </View>
+                          <AppText className="mt-1 text-xs text-brand">
+                            {productHint(message.parsed.product)}
+                          </AppText>
+                          <AppText className="mt-1 text-[11px] text-faint">
+                            {shortWhenLabel(new Date(message.date).toISOString())}
+                          </AppText>
+                          {message.parsed.reference ? (
+                            <AppText className="mt-1 text-xs font-semibold text-muted">
+                              Code {message.parsed.reference}
+                            </AppText>
+                          ) : null}
+                          <AppText className="mt-2 text-sm font-bold text-brand">
+                            {message.parsed.kind === "income" ? "+" : "−"}
+                            {formatMoney(message.parsed.amount, currency)}
+                            {message.parsed.feeAmount > 0
+                              ? ` · fee ${formatMoney(message.parsed.feeAmount, currency)}`
+                              : ""}
+                          </AppText>
+                        </Pressable>
+                      ))}
+                    </>
+                  )}
+
                   <Button variant="secondary" onPress={refreshInbox} loading={loadingSms}>
                     Refresh inbox
                   </Button>
