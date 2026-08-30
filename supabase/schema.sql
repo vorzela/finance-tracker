@@ -5,6 +5,15 @@
 -- It is safe to re-run: every object is created with `if not exists`, and
 -- policies are dropped before being recreated.
 --
+-- This is the ONLY file a new project needs — it already includes everything
+-- from migrate-avatars.sql, migrate-chat.sql, migrate-opening-balance.sql and
+-- migrate-perf.sql. Those four files are kept only so an *existing* Duo
+-- Wallet database from before they were folded in can catch up without
+-- losing data; ignore them on a fresh Supabase project.
+--
+-- Want a truly clean re-run (e.g. to wipe test data)? Run supabase/reset.sql
+-- first, then this file.
+--
 -- Two scopes exist throughout, and the difference is always `group_id`:
 --   • personal  → group_id is null, readable only by the row's owner
 --   • shared    → group_id set,     readable by every member of that group
