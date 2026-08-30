@@ -2,9 +2,9 @@
 -- Duo Wallet — reset script
 --
 -- ⚠️  DESTRUCTIVE. This deletes every Duo Wallet table, function, trigger,
--- policy, and the avatars storage bucket — including all rows in them.
--- It does NOT delete your Supabase auth users (auth.users), only the app
--- data built on top of them.
+-- and policy — including all rows in them. It does NOT delete your
+-- Supabase auth users (auth.users) or the avatars storage bucket/files,
+-- only the app's database objects.
 --
 -- Use this when you want to re-run supabase/schema.sql on a totally clean
 -- slate (e.g. you've been iterating and want to drop test data, or a
@@ -48,12 +48,17 @@ drop function if exists public.ledger_home                   cascade;
 drop function if exists public.post_due_recurring             cascade;
 drop function if exists public.notify_chat_message              cascade;
 
--- ── Avatars storage bucket + its policies ────────────────────────────────
+-- ── Avatars storage policies ─────────────────────────────────────────────
+-- Note: the bucket and any uploaded files are intentionally left alone.
+-- Supabase blocks direct DELETE on storage.objects/storage.buckets from SQL
+-- (a built-in guard against orphaning files), and it's unnecessary anyway —
+-- schema.sql creates the bucket with `on conflict (id) do update`, so it's
+-- safe to re-run whether or not the bucket already exists. If you actually
+-- want to empty the avatars bucket, do it from the Supabase Dashboard
+-- (Storage → avatars → select all → delete) or via the Storage API, not SQL.
 drop policy if exists avatars_public_read  on storage.objects;
 drop policy if exists avatars_owner_write  on storage.objects;
 drop policy if exists avatars_owner_update on storage.objects;
 drop policy if exists avatars_owner_delete on storage.objects;
-delete from storage.objects where bucket_id = 'avatars';
-delete from storage.buckets where id = 'avatars';
 
 -- Done. Now run supabase/schema.sql in full to rebuild everything fresh.
