@@ -90,6 +90,34 @@ node scripts/generate-icons.mjs
 
 ## Build an APK to share
 
+**First, generate your own release keystore — don't skip this.** The
+default template signs release builds with the debug keystore, which is
+the *same file* on every Android developer's machine. Google Play Protect
+specifically flags apps signed with it as untrusted (no accountable
+signer), and for a finance app that also asks for SMS access, that's a
+near-guaranteed "harmful app" warning on your friends' phones. This repo's
+`plugins/with-release-signing.js` wires up a real signing config for you —
+you just need to point it at a keystore:
+
+```bash
+# 1. Generate a keystore (once — keep this file & passwords safe, you'll
+#    need the same one for every future release or updates will stop
+#    installing over the old copy).
+keytool -genkeypair -v -storetype PKCS12 \
+  -keystore duowallet-release.keystore \
+  -alias duowallet -keyalg RSA -keysize 2048 -validity 10000
+
+# 2. Point the build at it. Either export these before building:
+export DUOWALLET_UPLOAD_STORE_FILE=/absolute/path/to/duowallet-release.keystore
+export DUOWALLET_UPLOAD_STORE_PASSWORD=your-store-password
+export DUOWALLET_UPLOAD_KEY_ALIAS=duowallet
+export DUOWALLET_UPLOAD_KEY_PASSWORD=your-key-password
+
+# ...or put the non-secret bits in android/gradle.properties after prebuild
+# and pass passwords via env vars only — never commit a keystore or its
+# passwords to git.
+```
+
 ```bash
 npx expo prebuild --platform android
 cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
@@ -103,8 +131,10 @@ Release builds are **arm64-only**, with R8 minify + resource shrink (~25–30 MB
 
 Prefer baking Supabase keys into `.env` before the build so neither of you has to type them.
 
-> The Expo template signs release with the debug keystore by default. Fine for
-> the two of you; generate your own keystore before a public store release.
+> If `DUOWALLET_UPLOAD_STORE_FILE` isn't set, the build falls back to the
+> debug keystore so local dev builds keep working — but don't send that
+> APK to anyone else. Play Protect (and, if you ever publish, Play Store
+> review) will flag it.
 
 ---
 

@@ -6,7 +6,7 @@
 
 import { cn } from "@/lib/cn";
 import { activeFontFamily } from "@/lib/font-runtime";
-import { useAppearance, useThemeColors } from "@/lib/theme";
+import { useThemeColors } from "@/lib/theme";
 import { AppText } from "@/components/ui/app-text";
 import {
     CheckCircleIcon,
@@ -88,7 +88,6 @@ export const Input = forwardRef<TextInput, InputProps>(
     ref,
   ) => {
     const colors = useThemeColors();
-    const { font, italic } = useAppearance();
     const palette = useMemo(
       () => [colors.muted, colors.brand, colors.positive, colors.negative] as const,
       [colors.muted, colors.brand, colors.positive, colors.negative],

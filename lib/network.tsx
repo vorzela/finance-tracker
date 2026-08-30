@@ -8,6 +8,7 @@
 import * as api from "@/lib/api";
 import {
   getOfflineQueue,
+  isNetworkFailure,
   removeOfflineOp,
   subscribeOfflineQueue,
   type OfflineOp,
@@ -98,8 +99,19 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
           await applyOp(op);
           await removeOfflineOp(op.id);
         } catch (error) {
-          console.warn("[offline] sync failed", op.type, error);
-          break;
+          if (isNetworkFailure(error)) {
+            // Still offline / connection dropped mid-sync — stop for now,
+            // the next flush (reconnect, foreground, poll) will retry this
+            // same op from where we left off.
+            console.warn("[offline] sync paused, network failure", op.type, error);
+            break;
+          }
+          // A permanent failure (bad data, RLS rejection, stale reference,
+          // etc.) will never succeed no matter how many times we retry it.
+          // Drop it and keep going, so one bad entry can't block every
+          // later op from ever syncing.
+          console.warn("[offline] dropping op that can't sync", op.type, error);
+          await removeOfflineOp(op.id);
         }
       }
       await queryClient.invalidateQueries();
