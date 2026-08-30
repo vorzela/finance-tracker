@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { useThemeColors } from "@/lib/theme";
 import { CheckIcon } from "phosphor-react-native";
 import React from "react";
-import { Modal, Pressable, ScrollView, View } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -58,29 +58,38 @@ export function Sheet({
             elevation: 16,
           }}
         >
-          <View className="items-center pt-2.5">
-            <View className="h-1 w-9 rounded-full bg-faint/50" />
-          </View>
-
-          <View className="px-5 pb-3 pt-4">
-            <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
-            {subtitle ? (
-              <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
-            ) : null}
-          </View>
-
-          <ScrollView
-            className="px-3"
-            contentContainerStyle={{ paddingBottom: 8 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+          <KeyboardAvoidingView
+            behavior="padding"
+            style={{ flexShrink: 1 }}
+            // A fixed offset (rather than measuring) is fine here: the sheet
+            // is always anchored to the bottom of the screen, so there's
+            // nothing below it that padding would need to account for.
+            keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom : 0}
           >
-            {children}
-          </ScrollView>
+            <View className="items-center pt-2.5">
+              <View className="h-1 w-9 rounded-full bg-faint/50" />
+            </View>
 
-          {footer ? (
-            <View className="border-t border-hairline px-5 pt-4">{footer}</View>
-          ) : null}
+            <View className="px-5 pb-3 pt-4">
+              <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
+              {subtitle ? (
+                <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
+              ) : null}
+            </View>
+
+            <ScrollView
+              className="px-3"
+              contentContainerStyle={{ paddingBottom: 8 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {children}
+            </ScrollView>
+
+            {footer ? (
+              <View className="border-t border-hairline px-5 pt-4">{footer}</View>
+            ) : null}
+          </KeyboardAvoidingView>
         </Animated.View>
       </Animated.View>
     </Modal>

@@ -72,6 +72,7 @@ import {
   SourceSerif4_700Bold,
 } from "@expo-google-fonts/source-serif-4";
 import { AccentRoot } from "@/components/ui/accent-root";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { NetworkProvider } from "@/lib/network";
 import { ScopeProvider } from "@/lib/scope";
@@ -226,7 +227,9 @@ export default function RootLayout() {
                   <ScopeProvider>
                     <KeyboardProvider>
                       <SplashGate>
-                        <RootStack />
+                        <ErrorBoundary>
+                          <RootStack />
+                        </ErrorBoundary>
                       </SplashGate>
                     </KeyboardProvider>
                   </ScopeProvider>
