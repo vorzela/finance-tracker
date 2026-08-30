@@ -121,11 +121,17 @@ export const Input = forwardRef<TextInput, InputProps>(
       cm.value = withTiming(colorMode(error, success, isFocused), { duration: 140 });
     }, [error, success, isFocused]);
 
+    const labelFontFamily = activeFontFamily({ fontWeight: "600" });
+    const fieldFontFamily = activeFontFamily({ fontWeight: "400" });
+
     const labelAnimStyle = useAnimatedStyle(() => ({
       fontSize: labelSize.value,
       transform: [{ translateY: labelY.value }],
       color: interpolateColor(cm.value, [0, 1, 2, 3], [...palette]),
-      fontFamily: activeFontFamily({ fontWeight: "600" }),
+      // Computed on the JS thread above and captured by value — calling
+      // activeFontFamily() itself from inside this worklet would try to
+      // invoke a non-worklet JS function on the UI thread, which crashes.
+      fontFamily: labelFontFamily,
     }));
 
     const fieldBg = error
@@ -166,7 +172,7 @@ export const Input = forwardRef<TextInput, InputProps>(
               style={[
                 {
                   color: colors.ink,
-                  fontFamily: activeFontFamily({ fontWeight: "400" }),
+                  fontFamily: fieldFontFamily,
                   fontWeight: "normal",
                 },
                 textAlign ? { textAlign } : null,
