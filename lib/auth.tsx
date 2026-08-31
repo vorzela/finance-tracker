@@ -8,8 +8,9 @@
  * that settles, `status` is `"loading"` and the router shows the splash.
  */
 
-import { useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useQueryClient } from "@tanstack/react-query";
 import type { Session, User } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
   useCallback,
@@ -72,6 +73,38 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   });
 }
 
+// Supabase's own getSession() already reads purely from local storage when
+// the access token isn't near expiry — no network involved. The trouble is
+// specifically the case where the token DOES need a refresh and there's no
+// network to do it with: Supabase then (correctly, by its own logic) returns
+// session: null, and our old code treated that exactly like "definitely
+// signed out" and booted the user to the sign-in screen — even though their
+// refresh token was probably still fine and they were simply offline. For
+// an app built around an offline queue and a persisted query cache, that's
+// wrong: it cuts the user off from their own local data for no reason other
+// than a temporary lack of connectivity. We keep our own small record of the
+// last session we know was valid, and fall back to it (rather than to
+// signedOut) whenever we can't currently verify one AND we're offline.
+const CACHED_SESSION_KEY = "duo-wallet.cached-session";
+
+async function cacheSession(session: Session | null): Promise<void> {
+  try {
+    if (session) await AsyncStorage.setItem(CACHED_SESSION_KEY, JSON.stringify(session));
+    else await AsyncStorage.removeItem(CACHED_SESSION_KEY);
+  } catch {
+    // Best-effort only — never let this block the real auth flow.
+  }
+}
+
+async function readCachedSession(): Promise<Session | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHED_SESSION_KEY);
+    return raw ? (JSON.parse(raw) as Session) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<AuthStatus>("loading");
@@ -109,12 +142,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
         if (cancelled) return;
 
-        setSession(data.session ?? null);
-        setStatus(data.session ? "signedIn" : "signedOut");
+        if (data.session) {
+          setSession(data.session);
+          setStatus("signedIn");
+          void cacheSession(data.session);
+        } else if (!onlineManager.isOnline()) {
+          const cached = await readCachedSession();
+          if (cached) {
+            console.warn("[auth] offline and couldn't verify session — using last known one");
+            setSession(cached);
+            setStatus("signedIn");
+          } else {
+            setSession(null);
+            setStatus("signedOut");
+          }
+        } else {
+          setSession(null);
+          setStatus("signedOut");
+        }
 
         const listener = client.auth.onAuthStateChange((_event, next) => {
           setSession(next ?? null);
           setStatus(next ? "signedIn" : "signedOut");
+          void cacheSession(next ?? null);
           // Cached rows belong to the previous user; never show them to the next.
           if (!next) queryClient.clear();
         });
@@ -123,9 +173,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         if (cancelled) return;
         // Any failure here (network error, bad/stale stored credentials,
-        // timeout) must still unblock the splash screen. Fall back to
-        // signed-out rather than leaving the app hung on "loading".
-        console.warn("[auth] session init failed, falling back to signedOut:", err);
+        // timeout) must still unblock the splash screen — but offline is not
+        // the same thing as signed out. Fall back to the last known session
+        // if we're offline and have one; only actually sign out otherwise.
+        console.warn("[auth] session init failed:", err);
+        if (!onlineManager.isOnline()) {
+          const cached = await readCachedSession();
+          if (cached) {
+            setSession(cached);
+            setStatus("signedIn");
+            return;
+          }
+        }
         setSession(null);
         setStatus("signedOut");
       }
