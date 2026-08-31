@@ -217,10 +217,17 @@ interface MembershipWithGroup {
   group: GroupRow | null;
 }
 
-export async function fetchGroups(): Promise<GroupSummary[]> {
+export async function fetchGroups(userId: string): Promise<GroupSummary[]> {
   const { data, error } = await supabase()
     .from("group_members")
     .select("role, group:groups(*)")
+    // group_members_select's RLS lets you see every member's row for any
+    // group you belong to (needed elsewhere, e.g. member lists) — not just
+    // your own row. Without this filter, a group with N members comes back
+    // as N duplicate rows here, one per member, all embedding the same
+    // group — which showed up as a household appearing twice (or however
+    // many members it has) in the ledger switcher.
+    .eq("user_id", userId)
     .order("joined_at", { ascending: true });
 
   if (error) fail(error, "load your groups");
@@ -423,13 +430,17 @@ export async function updateAccount(
   id: string,
   draft: AccountDraft,
 ): Promise<void> {
-  const openingBalance = Math.max(0, Math.round(draft.openingBalance));
   const { error } = await supabase()
     .from("accounts")
+    // Deliberately no opening_balance here: it's the fixed starting point
+    // every later balance calculation is built on
+    // (account_balances/member_balances add transactions on top of it), so
+    // changing it after the fact would silently rewrite the account's whole
+    // history rather than just correct a mistake going forward. It's set
+    // once, at creation, in createAccount below.
     .update({
       name: draft.name.trim(),
       type: draft.type,
-      opening_balance: openingBalance,
       color: draft.color,
     })
     .eq("id", id);

@@ -54,7 +54,7 @@ export function ScopeProvider({ children }: { children: React.ReactNode }) {
 
   const groupsQuery = useQuery({
     queryKey: userId ? keys.groups(userId) : ["groups", "anonymous"],
-    queryFn: fetchGroups,
+    queryFn: () => fetchGroups(userId!),
     enabled: status === "signedIn" && Boolean(userId),
     staleTime: 30_000,
   });
