@@ -495,23 +495,61 @@ as $$
   group by a.id, a.opening_balance;
 $$;
 
--- What each person in the ledger is holding. On a couple's shared ledger the
--- app sums these into one household figure, and shows the split underneath.
+-- What each person in the ledger has actually earned/spent, plus the seed
+-- money they put in when they added an account. On a couple's shared ledger
+-- the app sums these into one household figure, and shows the split
+-- underneath.
+--
+-- Deliberately attributed by *transaction.user_id* (who logged it), not by
+-- which account it happened to touch: a shared M-Pesa account is still one
+-- pot, but if your partner spends from it, that should show under their
+-- name, not whoever happened to set the account up. Only the one-time
+-- opening balance stays tied to account ownership — that really is a fixed
+-- contribution the account's creator made, not an ongoing "who did what".
+-- Transfers move money between accounts without anyone gaining or losing
+-- anything, so only their fee (a real cost) is attributed here, never the
+-- principal — which keeps every member's balance summing to exactly the
+-- same household total as account_balances gives per-account.
 create or replace function public.member_balances(p_group_id uuid default null)
 returns table (user_id uuid, opening_balance bigint, balance bigint)
 language sql
 stable
 set search_path = public
 as $$
+  with opening as (
+    select a.owner_id as member_id, coalesce(sum(a.opening_balance), 0)::bigint as amount
+    from public.accounts a
+    where a.group_id is not distinct from p_group_id
+      and not a.archived
+    group by a.owner_id
+  ),
+  activity as (
+    select
+      t.user_id as member_id,
+      sum(
+        case t.kind
+          when 'income'   then t.amount - t.fee_amount
+          when 'expense'  then -(t.amount + t.fee_amount)
+          when 'transfer' then -t.fee_amount
+          else 0
+        end
+      )::bigint as amount
+    from public.transactions t
+    where t.group_id is not distinct from p_group_id
+    group by t.user_id
+  ),
+  everyone as (
+    select member_id from opening
+    union
+    select member_id from activity
+  )
   select
-    a.owner_id,
-    coalesce(sum(a.opening_balance), 0)::bigint,
-    coalesce(sum(b.balance), 0)::bigint
-  from public.accounts a
-  join public.account_balances(p_group_id) b on b.account_id = a.id
-  where a.group_id is not distinct from p_group_id
-    and not a.archived
-  group by a.owner_id;
+    e.member_id,
+    coalesce(o.amount, 0)::bigint,
+    coalesce(o.amount, 0)::bigint + coalesce(act.amount, 0)::bigint
+  from everyone e
+  left join opening o on o.member_id = e.member_id
+  left join activity act on act.member_id = e.member_id;
 $$;
 
 -- How much of each debt is left. Payments are transactions tagged with the

@@ -328,26 +328,18 @@ export function coupleBalance(
   };
 }
 
-/** Household totals from per-account balances, without a second database round trip. */
-export function coupleBalanceFromAccounts(
-  accounts: { owner_id: string; opening_balance: number; balance: number }[],
-  members: Member[],
-): CoupleBalance {
-  const rows = new Map<string, { user_id: string; opening_balance: number; balance: number }>();
+/**
+ * NOTE: there used to be a coupleBalanceFromAccounts() here that derived
+ * per-member totals from account ownership, as a shortcut avoiding a second
+ * round trip to member_balances. Removed: member_balances now attributes by
+ * who actually made each transaction, not by account ownership (see its SQL
+ * comment), and account-ownership data alone can no longer reproduce that —
+ * reintroducing a client-side shortcut here would silently drift back to the
+ * old, wrong numbers. Use useMemberBalanceRows() / fetchMemberBalances()
+ * instead, which is what useCoupleBalance() and useMonthOverview() both do.
+ */
 
-  for (const account of accounts) {
-    const row = rows.get(account.owner_id) ?? {
-      user_id: account.owner_id,
-      opening_balance: 0,
-      balance: 0,
-    };
-    row.opening_balance += account.opening_balance;
-    row.balance += account.balance;
-    rows.set(account.owner_id, row);
-  }
 
-  return coupleBalance([...rows.values()], members);
-}
 
 /**
  * The next day a recurring entry will turn into a transaction. An entry whose
