@@ -11,13 +11,8 @@ import { useThemeColors } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import { ArrowLeftIcon, XIcon } from "phosphor-react-native";
 import React from "react";
-import {
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  View,
-  type ScrollViewProps,
-} from "react-native";
+import { Pressable, RefreshControl, View, type ScrollViewProps } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export function Screen({
@@ -56,10 +51,11 @@ export function ScreenScroll({
   const padBottom = bottomInset + (bottomInset >= 50 ? insets.bottom : 0);
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       className="flex-1"
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      bottomOffset={24}
       contentContainerStyle={[
         { paddingHorizontal: 20, paddingBottom: padBottom, gap: 20 },
         contentContainerStyle,
@@ -76,7 +72,7 @@ export function ScreenScroll({
       {...rest}
     >
       {children}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

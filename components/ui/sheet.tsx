@@ -2,16 +2,36 @@
  * components/ui/sheet.tsx
  *
  * Bottom sheet — clean grabber, grouped options, soft dimmer.
+ *
+ * Built on @gorhom/bottom-sheet rather than React Native's own <Modal> +
+ * KeyboardAvoidingView. That combination looks right on iOS but is
+ * unreliable for keyboard avoidance on Android: Modal renders its content
+ * in a separate native Dialog window, and KeyboardAvoidingView listens for
+ * keyboard-height events reported against the *root* window — the two
+ * don't talk to each other reliably, so inputs inside a Modal-based sheet
+ * end up hidden behind the keyboard instead of the sheet shifting up.
+ * @gorhom/bottom-sheet renders as an overlay within the same window as the
+ * rest of the app (via a portal at the GestureHandlerRootView, see
+ * BottomSheetModalProvider in app/_layout.tsx) and has first-class
+ * keyboard handling built specifically for this problem — paired here with
+ * react-native-keyboard-controller (already used app-wide via
+ * KeyboardProvider in app/_layout.tsx), which is the setup gorhom's own
+ * docs recommend for reliable Android behavior.
  */
 
 import { AppText } from "@/components/ui/app-text";
-
 import { cn } from "@/lib/cn";
 import { useThemeColors } from "@/lib/theme";
+import {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+  BottomSheetModal,
+  BottomSheetScrollView,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
 import { CheckIcon } from "phosphor-react-native";
-import React from "react";
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from "react-native";
-import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export interface SheetProps {
@@ -35,64 +55,85 @@ export function Sheet({
 }: SheetProps) {
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
+  const ref = useRef<BottomSheetModal>(null);
+
+  // Bridge the visible-boolean API every call site already uses onto
+  // BottomSheetModal's imperative present()/dismiss() API, so nothing
+  // outside this file needs to change.
+  useEffect(() => {
+    if (visible) ref.current?.present();
+    else ref.current?.dismiss();
+  }, [visible]);
+
+  const snapPoints = useMemo(() => [`${maxHeightRatio * 100}%`], [maxHeightRatio]);
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.28}
+        pressBehavior="close"
+      />
+    ),
+    [],
+  );
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Animated.View
-        entering={FadeIn.duration(140)}
-        className="flex-1 justify-end"
-        style={{ backgroundColor: "rgba(0,0,0,0.28)" }}
-      >
-        <Pressable className="flex-1" onPress={onClose} accessibilityLabel="Dismiss" />
+    <BottomSheetModal
+      ref={ref}
+      snapPoints={snapPoints}
+      onDismiss={onClose}
+      backdropComponent={renderBackdrop}
+      enablePanDownToClose
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+      android_keyboardInputMode="adjustResize"
+      handleIndicatorStyle={{ backgroundColor: colors.faint, width: 36, height: 4 }}
+      backgroundStyle={{
+        backgroundColor: colors.surface,
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+      }}
+      style={{
+        shadowColor: colors.chrome,
+        shadowOpacity: 0.18,
+        shadowRadius: 24,
+        shadowOffset: { width: 0, height: -4 },
+        elevation: 16,
+      }}
+    >
+      <BottomSheetView style={{ paddingHorizontal: 20, paddingBottom: 12, paddingTop: 4 }}>
+        <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
+        {subtitle ? (
+          <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
+        ) : null}
+      </BottomSheetView>
 
-        <Animated.View
-          entering={SlideInDown.duration(280)}
-          className="rounded-t-[28px] bg-surface"
+      <BottomSheetScrollView
+        style={{ paddingHorizontal: 12, flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 8 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {children}
+      </BottomSheetScrollView>
+
+      {footer ? (
+        <View
           style={{
-            maxHeight: `${maxHeightRatio * 100}%`,
+            borderTopWidth: 1,
+            borderTopColor: colors.hairline,
+            paddingHorizontal: 20,
+            paddingTop: 16,
             paddingBottom: insets.bottom + 10,
-            shadowColor: colors.chrome,
-            shadowOpacity: 0.18,
-            shadowRadius: 24,
-            shadowOffset: { width: 0, height: -4 },
-            elevation: 16,
           }}
         >
-          <KeyboardAvoidingView
-            behavior="padding"
-            style={{ flexShrink: 1 }}
-            // A fixed offset (rather than measuring) is fine here: the sheet
-            // is always anchored to the bottom of the screen, so there's
-            // nothing below it that padding would need to account for.
-            keyboardVerticalOffset={Platform.OS === "ios" ? insets.bottom : 0}
-          >
-            <View className="items-center pt-2.5">
-              <View className="h-1 w-9 rounded-full bg-faint/50" />
-            </View>
-
-            <View className="px-5 pb-3 pt-4">
-              <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
-              {subtitle ? (
-                <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
-              ) : null}
-            </View>
-
-            <ScrollView
-              className="px-3"
-              contentContainerStyle={{ paddingBottom: 8 }}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {children}
-            </ScrollView>
-
-            {footer ? (
-              <View className="border-t border-hairline px-5 pt-4">{footer}</View>
-            ) : null}
-          </KeyboardAvoidingView>
-        </Animated.View>
-      </Animated.View>
-    </Modal>
+          {footer}
+        </View>
+      ) : null}
+    </BottomSheetModal>
   );
 }
 
