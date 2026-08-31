@@ -736,6 +736,7 @@ export default function Entry() {
                   <Avatar
                     name={selectedMember.name}
                     color={selectedMember.color}
+                    uri={selectedMember.avatarUrl}
                     size="md"
                   />
                 ) : (
@@ -917,7 +918,7 @@ export default function Entry() {
             key={member.id}
             label={member.isSelf ? "You" : member.name}
             selected={member.id === activeMemberId}
-            leading={<Avatar name={member.name} color={member.color} size="md" />}
+            leading={<Avatar name={member.name} color={member.color} uri={member.avatarUrl} size="md" />}
             onPress={() => {
               setMemberId(member.id);
               setPicker("none");

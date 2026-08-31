@@ -203,7 +203,7 @@ export default function Insights() {
               {(overview?.members ?? []).map((entry) => (
                 <View key={entry.member.id} className="gap-2">
                   <View className="flex-row items-center gap-3">
-                    <Avatar name={entry.member.name} color={entry.member.color} size="sm" />
+                    <Avatar name={entry.member.name} color={entry.member.color} uri={entry.member.avatarUrl} size="sm" />
                     <View className="flex-1">
                       <AppText className="text-sm font-semibold text-ink">
                         {entry.member.isSelf ? "You" : entry.member.name}

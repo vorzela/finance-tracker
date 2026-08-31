@@ -187,7 +187,7 @@ export default function Activity() {
                     setMemberId((current) => (current === member.id ? null : member.id))
                   }
                   leading={
-                    <Avatar name={member.name} color={member.color} size="xs" />
+                    <Avatar name={member.name} color={member.color} uri={member.avatarUrl} size="xs" />
                   }
                 />
               ))

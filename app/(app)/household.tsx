@@ -241,7 +241,7 @@ export default function Household() {
                 </AppText>
                 {(members ?? []).map((member) => (
                   <View key={member.id} className="flex-row items-center gap-3">
-                    <Avatar name={member.name} color={member.color} size="md" />
+                    <Avatar name={member.name} color={member.color} uri={member.avatarUrl} size="md" />
                     <View className="flex-1">
                       <AppText className="text-base font-semibold text-gray-900">
                         {member.isSelf ? `${member.name} (you)` : member.name}
