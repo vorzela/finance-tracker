@@ -107,91 +107,119 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         continue;
       }
 
-      const channel = supabase()
-        .channel(`chat:${groupId}`, {
-          config: {
-            presence: { key: user.id },
-            broadcast: { self: false },
-          },
-        })
-        .on("presence", { event: "sync" }, () => {
-          const state = channel.presenceState();
-          setOnlineByGroup((prev) => ({ ...prev, [groupId]: Object.keys(state) }));
-        })
-        .on("broadcast", { event: "typing" }, ({ payload }) => {
-          const otherId = typeof payload?.userId === "string" ? payload.userId : null;
-          if (!otherId || otherId === user.id) return;
-          const typing = Boolean(payload?.typing);
-          setTypingByGroup((prev) => {
-            const current = new Set(prev[groupId] ?? []);
-            if (typing) current.add(otherId);
-            else current.delete(otherId);
-            return { ...prev, [groupId]: [...current] };
-          });
-          const timerKey = `${groupId}:${otherId}`;
-          const prior = typingTimers.current.get(timerKey);
-          if (prior) clearTimeout(prior);
-          if (typing) {
-            typingTimers.current.set(
-              timerKey,
-              setTimeout(() => {
-                setTypingByGroup((prev) => ({
-                  ...prev,
-                  [groupId]: (prev[groupId] ?? []).filter((id) => id !== otherId),
-                }));
-              }, 3500),
-            );
-          }
-        })
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-            filter: `group_id=eq.${groupId}`,
-          },
-          (payload) => {
-            const row = payload.new as MessageRow;
-            if (!row?.id) return;
-            appendMessage(queryClient, row);
-            if (row.user_id === user.id) return;
+      const topic = `chat:${groupId}`;
 
-            const viewing = focusedChatRef.current === groupId;
-            if (!viewing) {
-              setUnreadByGroup((prev) => ({
-                ...prev,
-                [groupId]: (prev[groupId] ?? 0) + 1,
-              }));
-            }
+      // Defensive dedupe: Supabase's realtime client tracks channel
+      // bindings by topic string, not by JS object identity. If anything
+      // (a fast re-render, a provider remount, effect timing on a given
+      // device) ever leads this effect to attempt building a channel for a
+      // topic that's already registered with the client, calling .on()
+      // on the new object throws "cannot add `presence` callbacks ...
+      // after `subscribe()`" — and because that happens inside a
+      // useEffect, not during render, it's invisible to React error
+      // boundaries and crashes the whole app in a release build. Removing
+      // any stray registration for this exact topic first makes channel
+      // creation idempotent regardless of why this ran more than once.
+      for (const stray of supabase().getChannels()) {
+        if (stray.topic === `realtime:${topic}`) {
+          void supabase().removeChannel(stray);
+        }
+      }
 
-            const members = queryClient.getQueryData<Member[]>(
-              keys.members({ kind: "group", groupId }),
-            );
-            const sender = members?.find((member) => member.id === row.user_id);
-            const household = groupsRef.current.find((group) => group.id === groupId);
-            const groupChat = (household?.memberCount ?? 0) >= 3;
-            void notifyChatMessage({
-              groupId,
-              title: groupChat
-                ? `${household?.name ?? "Household"} · ${sender?.name ?? "Someone"}`
-                : (sender?.name ?? "New message"),
-              body: row.body,
+      try {
+        const channel = supabase()
+          .channel(topic, {
+            config: {
+              presence: { key: user.id },
+              broadcast: { self: false },
+            },
+          })
+          .on("presence", { event: "sync" }, () => {
+            const state = channel.presenceState();
+            setOnlineByGroup((prev) => ({ ...prev, [groupId]: Object.keys(state) }));
+          })
+          .on("broadcast", { event: "typing" }, ({ payload }) => {
+            const otherId = typeof payload?.userId === "string" ? payload.userId : null;
+            if (!otherId || otherId === user.id) return;
+            const typing = Boolean(payload?.typing);
+            setTypingByGroup((prev) => {
+              const current = new Set(prev[groupId] ?? []);
+              if (typing) current.add(otherId);
+              else current.delete(otherId);
+              return { ...prev, [groupId]: [...current] };
             });
-          },
-        )
-        .subscribe((channelStatus) => {
-          if (channelStatus !== "SUBSCRIBED") return;
-          void channel.track({
-            user_id: user.id,
-            name: profile?.display_name ?? "Me",
-            color: profile?.color ?? "#2a5298",
-            avatar_url: profile?.avatar_url ?? null,
-            online_at: new Date().toISOString(),
-          });
-        });
+            const timerKey = `${groupId}:${otherId}`;
+            const prior = typingTimers.current.get(timerKey);
+            if (prior) clearTimeout(prior);
+            if (typing) {
+              typingTimers.current.set(
+                timerKey,
+                setTimeout(() => {
+                  setTypingByGroup((prev) => ({
+                    ...prev,
+                    [groupId]: (prev[groupId] ?? []).filter((id) => id !== otherId),
+                  }));
+                }, 3500),
+              );
+            }
+          })
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "messages",
+              filter: `group_id=eq.${groupId}`,
+            },
+            (payload) => {
+              const row = payload.new as MessageRow;
+              if (!row?.id) return;
+              appendMessage(queryClient, row);
+              if (row.user_id === user.id) return;
 
-      next.set(groupId, channel);
+              const viewing = focusedChatRef.current === groupId;
+              if (!viewing) {
+                setUnreadByGroup((prev) => ({
+                  ...prev,
+                  [groupId]: (prev[groupId] ?? 0) + 1,
+                }));
+              }
+
+              const members = queryClient.getQueryData<Member[]>(
+                keys.members({ kind: "group", groupId }),
+              );
+              const sender = members?.find((member) => member.id === row.user_id);
+              const household = groupsRef.current.find((group) => group.id === groupId);
+              const groupChat = (household?.memberCount ?? 0) >= 3;
+              void notifyChatMessage({
+                groupId,
+                title: groupChat
+                  ? `${household?.name ?? "Household"} · ${sender?.name ?? "Someone"}`
+                  : (sender?.name ?? "New message"),
+                body: row.body,
+              });
+            },
+          )
+          .subscribe((channelStatus) => {
+            if (channelStatus !== "SUBSCRIBED") return;
+            void channel.track({
+              user_id: user.id,
+              name: profile?.display_name ?? "Me",
+              color: profile?.color ?? "#2a5298",
+              avatar_url: profile?.avatar_url ?? null,
+              online_at: new Date().toISOString(),
+            });
+          });
+
+        next.set(groupId, channel);
+      } catch (err) {
+        // useEffect errors are invisible to React error boundaries — they
+        // bypass render entirely and crash the whole app in a release
+        // build if left uncaught. Chat realtime is a nice-to-have; losing
+        // live updates for one household is far better than the app
+        // going down for everyone.
+        console.warn("[chat] failed to set up realtime channel for", groupId, err);
+      }
     }
 
     for (const stale of existing.values()) {
