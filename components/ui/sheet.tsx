@@ -44,6 +44,14 @@ export interface SheetProps {
   footer?: React.ReactNode;
 }
 
+/** True for any component rendered inside a Sheet's content. Input reads
+ * this to decide whether it needs BottomSheetTextInput instead of the
+ * plain RN TextInput — per @gorhom/bottom-sheet's own troubleshooting
+ * docs, a regular TextInput inside a bottom sheet doesn't integrate with
+ * the sheet's keyboard/gesture handling properly and the keyboard ends up
+ * fighting the sheet instead of the two working together. */
+export const SheetInputContext = React.createContext(false);
+
 export function Sheet({
   visible,
   onClose,
@@ -117,7 +125,7 @@ export function Sheet({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {children}
+        <SheetInputContext.Provider value={true}>{children}</SheetInputContext.Provider>
       </BottomSheetScrollView>
 
       {footer ? (
@@ -130,7 +138,7 @@ export function Sheet({
             paddingBottom: insets.bottom + 10,
           }}
         >
-          {footer}
+          <SheetInputContext.Provider value={true}>{footer}</SheetInputContext.Provider>
         </View>
       ) : null}
     </BottomSheetModal>

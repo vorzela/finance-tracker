@@ -11,8 +11,10 @@
  */
 
 import { cn } from "@/lib/cn";
+import { SheetInputContext } from "@/components/ui/sheet";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { CheckCircleIcon, WarningCircleIcon } from "phosphor-react-native";
-import React, { forwardRef, useEffect, useRef, useState } from "react";
+import React, { forwardRef, useContext, useEffect, useRef, useState } from "react";
 import {
   Pressable,
   Text,
@@ -188,6 +190,9 @@ export const TextArea = forwardRef<TextInput, TextAreaProps>(
     }));
 
     // ── Ref merge ─────────────────────────────────────────────────────────────
+    const insideSheet = useContext(SheetInputContext);
+    // See SheetInputContext's comment on why this swap is needed inside a Sheet.
+    const Field = (insideSheet ? BottomSheetTextInput : TextInput) as typeof TextInput;
     const internalRef = useRef<TextInput>(null);
     const mergeRef = (node: TextInput | null) => {
       (internalRef as React.MutableRefObject<TextInput | null>).current = node;
@@ -245,7 +250,7 @@ export const TextArea = forwardRef<TextInput, TextAreaProps>(
           )}
 
           <Animated.View style={heightStyle}>
-            <TextInput
+            <Field
               ref={mergeRef}
               className={cn(
                 "text-base text-gray-900 p-0 m-0 flex-1",
