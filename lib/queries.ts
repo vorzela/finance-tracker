@@ -129,6 +129,7 @@ export function useMembers() {
             role: "owner" as const,
             isSelf: true,
             avatarUrl: profileQuery.data.avatar_url,
+            lastReadAt: null,
           },
         ]
       : undefined;

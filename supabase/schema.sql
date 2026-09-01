@@ -63,14 +63,21 @@ create table if not exists public.groups (
 );
 
 create table if not exists public.group_members (
-  group_id  uuid        not null references public.groups (id) on delete cascade,
-  user_id   uuid        not null references public.profiles (id) on delete cascade,
-  role      text        not null default 'member' check (role in ('owner', 'member')),
-  joined_at timestamptz not null default now(),
+  group_id      uuid        not null references public.groups (id) on delete cascade,
+  user_id       uuid        not null references public.profiles (id) on delete cascade,
+  role          text        not null default 'member' check (role in ('owner', 'member')),
+  joined_at     timestamptz not null default now(),
+  -- Read receipts: bumped to now() whenever this member has the group chat
+  -- open (see mark_chat_read below). Null means "never opened chat" — every
+  -- message is unread, not a bug.
+  last_read_at  timestamptz,
   primary key (group_id, user_id)
 );
 
 create index if not exists group_members_user_idx on public.group_members (user_id);
+
+-- Needed for anyone who ran schema.sql before read receipts existed.
+alter table public.group_members add column if not exists last_read_at timestamptz;
 
 -- ── Accounts ────────────────────────────────────────────────────────────────
 -- Where money sits. Balances are always derived from transactions, never stored.
@@ -447,6 +454,26 @@ begin
   fresh := public.generate_invite_code();
   update public.groups set invite_code = fresh where id = p_group_id;
   return fresh;
+end;
+$$;
+
+-- Read receipts. A dedicated RPC rather than a raw UPDATE grant on
+-- group_members: this only ever touches the caller's own row, and only
+-- last_read_at — no broader write access to that table is needed or given.
+create or replace function public.mark_chat_read(p_group_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_group_member(p_group_id) then
+    raise exception 'Not a member of this group';
+  end if;
+
+  update public.group_members
+  set last_read_at = now()
+  where group_id = p_group_id and user_id = (select auth.uid());
 end;
 $$;
 
@@ -1133,6 +1160,7 @@ grant select, insert, update, delete
 grant execute on function public.create_group(text, text)   to authenticated;
 grant execute on function public.join_group(text)           to authenticated;
 grant execute on function public.rotate_invite_code(uuid)   to authenticated;
+grant execute on function public.mark_chat_read(uuid)        to authenticated;
 grant execute on function public.account_balances(uuid)     to authenticated;
 grant execute on function public.member_balances(uuid)      to authenticated;
 grant execute on function public.debt_balances(uuid)        to authenticated;

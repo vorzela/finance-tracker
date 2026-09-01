@@ -312,6 +312,7 @@ export async function leaveGroup(groupId: string, userId: string): Promise<void>
 interface MemberWithProfile {
   role: MemberRole;
   user_id: string;
+  last_read_at: string | null;
   profile: Pick<ProfileRow, "id" | "display_name" | "color" | "avatar_url"> | null;
 }
 
@@ -327,13 +328,14 @@ export async function fetchMembers(scope: Scope, userId: string): Promise<Member
         role: "owner",
         isSelf: true,
         avatarUrl: profile.avatar_url,
+        lastReadAt: null,
       },
     ];
   }
 
   const { data, error } = await supabase()
     .from("group_members")
-    .select("role, user_id, profile:profiles(id, display_name, color, avatar_url)")
+    .select("role, user_id, last_read_at, profile:profiles(id, display_name, color, avatar_url)")
     .eq("group_id", scope.groupId)
     .order("joined_at", { ascending: true });
 
@@ -346,7 +348,14 @@ export async function fetchMembers(scope: Scope, userId: string): Promise<Member
     role: row.role,
     isSelf: row.user_id === userId,
     avatarUrl: row.profile?.avatar_url ?? null,
+    lastReadAt: row.last_read_at ?? null,
   }));
+}
+
+/** Bumps the caller's read receipt for a group's chat to now. */
+export async function markChatRead(groupId: string): Promise<void> {
+  const { error } = await supabase().rpc("mark_chat_read", { p_group_id: groupId });
+  if (error) fail(error, "mark chat as read");
 }
 
 // ── Accounts ────────────────────────────────────────────────────────────────
@@ -631,6 +640,10 @@ function parseMember(raw: Record<string, unknown>): Member {
     role: asString(raw.role) === "owner" ? "owner" : "member",
     isSelf: Boolean(raw.is_self),
     avatarUrl: raw.avatar_url == null ? null : asString(raw.avatar_url),
+    // Not carried in ledger_home's snapshot — this path is used for the
+    // member picker/breakdowns, not the chat screen, which fetches live
+    // read state via fetchMembers() instead.
+    lastReadAt: null,
   };
 }
 

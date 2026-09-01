@@ -19,7 +19,7 @@ import React, {
   useState,
 } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { fetchProfile, keys } from "@/lib/api";
+import { fetchProfile, keys, markChatRead } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { notifyChatMessage, registerPushToken, setViewingChatGroup } from "@/lib/notifications";
 import { useScope } from "@/lib/scope";
@@ -163,6 +163,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               );
             }
           })
+          .on("broadcast", { event: "read" }, ({ payload }) => {
+            const otherId = typeof payload?.userId === "string" ? payload.userId : null;
+            const readAt = typeof payload?.readAt === "string" ? payload.readAt : null;
+            if (!otherId || !readAt || otherId === user.id) return;
+            // Instant update for whoever's looking at this chat right now —
+            // the DB write in markRead() is what makes it durable for
+            // anyone who reopens the chat later.
+            queryClient.setQueryData<Member[]>(keys.members({ kind: "group", groupId }), (prev) =>
+              prev?.map((member) =>
+                member.id === otherId ? { ...member, lastReadAt: readAt } : member,
+              ),
+            );
+          })
           .on(
             "postgres_changes",
             {
@@ -251,10 +264,36 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const markRead = useCallback((groupId: string) => {
-    setUnreadByGroup((prev) => ({ ...prev, [groupId]: 0 }));
-    void AsyncStorage.setItem(READ_PREFIX + groupId, new Date().toISOString());
-  }, []);
+  const markRead = useCallback(
+    (groupId: string) => {
+      setUnreadByGroup((prev) => ({ ...prev, [groupId]: 0 }));
+      void AsyncStorage.setItem(READ_PREFIX + groupId, new Date().toISOString());
+      const readAt = new Date().toISOString();
+
+      const channel = channelsRef.current.get(groupId);
+      if (channel && user) {
+        void channel.send({
+          type: "broadcast",
+          event: "read",
+          payload: { userId: user.id, readAt },
+        });
+      }
+
+      // Server-side read receipt, so the other member(s) can still see
+      // you've seen their message next time they open the app, even if
+      // they weren't online for the broadcast above. Best-effort — a
+      // failed/offline call here shouldn't block viewing the chat, it'll
+      // just catch up next time this fires.
+      void markChatRead(groupId)
+        .then(() => {
+          queryClient.setQueryData<Member[]>(keys.members({ kind: "group", groupId }), (prev) =>
+            prev?.map((member) => (member.isSelf ? { ...member, lastReadAt: readAt } : member)),
+          );
+        })
+        .catch((err: unknown) => console.warn("[chat] markChatRead failed", groupId, err));
+    },
+    [queryClient, user],
+  );
 
   const setTyping = useCallback(
     (typing: boolean) => {
