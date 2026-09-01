@@ -19,7 +19,7 @@ import React, {
   useState,
 } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
-import { fetchProfile, keys } from "@/lib/api";
+import { fetchProfile, keys, markChatRead } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { notifyChatMessage, registerPushToken, setViewingChatGroup } from "@/lib/notifications";
 import { useScope } from "@/lib/scope";
@@ -107,91 +107,132 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         continue;
       }
 
-      const channel = supabase()
-        .channel(`chat:${groupId}`, {
-          config: {
-            presence: { key: user.id },
-            broadcast: { self: false },
-          },
-        })
-        .on("presence", { event: "sync" }, () => {
-          const state = channel.presenceState();
-          setOnlineByGroup((prev) => ({ ...prev, [groupId]: Object.keys(state) }));
-        })
-        .on("broadcast", { event: "typing" }, ({ payload }) => {
-          const otherId = typeof payload?.userId === "string" ? payload.userId : null;
-          if (!otherId || otherId === user.id) return;
-          const typing = Boolean(payload?.typing);
-          setTypingByGroup((prev) => {
-            const current = new Set(prev[groupId] ?? []);
-            if (typing) current.add(otherId);
-            else current.delete(otherId);
-            return { ...prev, [groupId]: [...current] };
-          });
-          const timerKey = `${groupId}:${otherId}`;
-          const prior = typingTimers.current.get(timerKey);
-          if (prior) clearTimeout(prior);
-          if (typing) {
-            typingTimers.current.set(
-              timerKey,
-              setTimeout(() => {
-                setTypingByGroup((prev) => ({
-                  ...prev,
-                  [groupId]: (prev[groupId] ?? []).filter((id) => id !== otherId),
-                }));
-              }, 3500),
-            );
-          }
-        })
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-            filter: `group_id=eq.${groupId}`,
-          },
-          (payload) => {
-            const row = payload.new as MessageRow;
-            if (!row?.id) return;
-            appendMessage(queryClient, row);
-            if (row.user_id === user.id) return;
+      const topic = `chat:${groupId}`;
 
-            const viewing = focusedChatRef.current === groupId;
-            if (!viewing) {
-              setUnreadByGroup((prev) => ({
-                ...prev,
-                [groupId]: (prev[groupId] ?? 0) + 1,
-              }));
-            }
+      // Defensive dedupe: Supabase's realtime client tracks channel
+      // bindings by topic string, not by JS object identity. If anything
+      // (a fast re-render, a provider remount, effect timing on a given
+      // device) ever leads this effect to attempt building a channel for a
+      // topic that's already registered with the client, calling .on()
+      // on the new object throws "cannot add `presence` callbacks ...
+      // after `subscribe()`" — and because that happens inside a
+      // useEffect, not during render, it's invisible to React error
+      // boundaries and crashes the whole app in a release build. Removing
+      // any stray registration for this exact topic first makes channel
+      // creation idempotent regardless of why this ran more than once.
+      for (const stray of supabase().getChannels()) {
+        if (stray.topic === `realtime:${topic}`) {
+          void supabase().removeChannel(stray);
+        }
+      }
 
-            const members = queryClient.getQueryData<Member[]>(
-              keys.members({ kind: "group", groupId }),
-            );
-            const sender = members?.find((member) => member.id === row.user_id);
-            const household = groupsRef.current.find((group) => group.id === groupId);
-            const groupChat = (household?.memberCount ?? 0) >= 3;
-            void notifyChatMessage({
-              groupId,
-              title: groupChat
-                ? `${household?.name ?? "Household"} · ${sender?.name ?? "Someone"}`
-                : (sender?.name ?? "New message"),
-              body: row.body,
+      try {
+        const channel = supabase()
+          .channel(topic, {
+            config: {
+              presence: { key: user.id },
+              broadcast: { self: false },
+            },
+          })
+          .on("presence", { event: "sync" }, () => {
+            const state = channel.presenceState();
+            setOnlineByGroup((prev) => ({ ...prev, [groupId]: Object.keys(state) }));
+          })
+          .on("broadcast", { event: "typing" }, ({ payload }) => {
+            const otherId = typeof payload?.userId === "string" ? payload.userId : null;
+            if (!otherId || otherId === user.id) return;
+            const typing = Boolean(payload?.typing);
+            setTypingByGroup((prev) => {
+              const current = new Set(prev[groupId] ?? []);
+              if (typing) current.add(otherId);
+              else current.delete(otherId);
+              return { ...prev, [groupId]: [...current] };
             });
-          },
-        )
-        .subscribe((channelStatus) => {
-          if (channelStatus !== "SUBSCRIBED") return;
-          void channel.track({
-            user_id: user.id,
-            name: profile?.display_name ?? "Me",
-            color: profile?.color ?? "#2a5298",
-            avatar_url: profile?.avatar_url ?? null,
-            online_at: new Date().toISOString(),
-          });
-        });
+            const timerKey = `${groupId}:${otherId}`;
+            const prior = typingTimers.current.get(timerKey);
+            if (prior) clearTimeout(prior);
+            if (typing) {
+              typingTimers.current.set(
+                timerKey,
+                setTimeout(() => {
+                  setTypingByGroup((prev) => ({
+                    ...prev,
+                    [groupId]: (prev[groupId] ?? []).filter((id) => id !== otherId),
+                  }));
+                }, 3500),
+              );
+            }
+          })
+          .on("broadcast", { event: "read" }, ({ payload }) => {
+            const otherId = typeof payload?.userId === "string" ? payload.userId : null;
+            const readAt = typeof payload?.readAt === "string" ? payload.readAt : null;
+            if (!otherId || !readAt || otherId === user.id) return;
+            // Instant update for whoever's looking at this chat right now —
+            // the DB write in markRead() is what makes it durable for
+            // anyone who reopens the chat later.
+            queryClient.setQueryData<Member[]>(keys.members({ kind: "group", groupId }), (prev) =>
+              prev?.map((member) =>
+                member.id === otherId ? { ...member, lastReadAt: readAt } : member,
+              ),
+            );
+          })
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "messages",
+              filter: `group_id=eq.${groupId}`,
+            },
+            (payload) => {
+              const row = payload.new as MessageRow;
+              if (!row?.id) return;
+              appendMessage(queryClient, row);
+              if (row.user_id === user.id) return;
 
-      next.set(groupId, channel);
+              const viewing = focusedChatRef.current === groupId;
+              if (!viewing) {
+                setUnreadByGroup((prev) => ({
+                  ...prev,
+                  [groupId]: (prev[groupId] ?? 0) + 1,
+                }));
+              }
+
+              const members = queryClient.getQueryData<Member[]>(
+                keys.members({ kind: "group", groupId }),
+              );
+              const sender = members?.find((member) => member.id === row.user_id);
+              const household = groupsRef.current.find((group) => group.id === groupId);
+              const groupChat = (household?.memberCount ?? 0) >= 3;
+              void notifyChatMessage({
+                groupId,
+                title: groupChat
+                  ? `${household?.name ?? "Household"} · ${sender?.name ?? "Someone"}`
+                  : (sender?.name ?? "New message"),
+                body: row.body,
+              });
+            },
+          )
+          .subscribe((channelStatus) => {
+            if (channelStatus !== "SUBSCRIBED") return;
+            void channel.track({
+              user_id: user.id,
+              name: profile?.display_name ?? "Me",
+              color: profile?.color ?? "#2a5298",
+              avatar_url: profile?.avatar_url ?? null,
+              online_at: new Date().toISOString(),
+            });
+          });
+
+        next.set(groupId, channel);
+      } catch (err) {
+        // useEffect errors are invisible to React error boundaries — they
+        // bypass render entirely and crash the whole app in a release
+        // build if left uncaught. Chat realtime is a nice-to-have; losing
+        // live updates for one household is far better than the app
+        // going down for everyone.
+        console.warn("[chat] failed to set up realtime channel for", groupId, err);
+      }
     }
 
     for (const stale of existing.values()) {
@@ -223,10 +264,36 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const markRead = useCallback((groupId: string) => {
-    setUnreadByGroup((prev) => ({ ...prev, [groupId]: 0 }));
-    void AsyncStorage.setItem(READ_PREFIX + groupId, new Date().toISOString());
-  }, []);
+  const markRead = useCallback(
+    (groupId: string) => {
+      setUnreadByGroup((prev) => ({ ...prev, [groupId]: 0 }));
+      void AsyncStorage.setItem(READ_PREFIX + groupId, new Date().toISOString());
+      const readAt = new Date().toISOString();
+
+      const channel = channelsRef.current.get(groupId);
+      if (channel && user) {
+        void channel.send({
+          type: "broadcast",
+          event: "read",
+          payload: { userId: user.id, readAt },
+        });
+      }
+
+      // Server-side read receipt, so the other member(s) can still see
+      // you've seen their message next time they open the app, even if
+      // they weren't online for the broadcast above. Best-effort — a
+      // failed/offline call here shouldn't block viewing the chat, it'll
+      // just catch up next time this fires.
+      void markChatRead(groupId)
+        .then(() => {
+          queryClient.setQueryData<Member[]>(keys.members({ kind: "group", groupId }), (prev) =>
+            prev?.map((member) => (member.isSelf ? { ...member, lastReadAt: readAt } : member)),
+          );
+        })
+        .catch((err: unknown) => console.warn("[chat] markChatRead failed", groupId, err));
+    },
+    [queryClient, user],
+  );
 
   const setTyping = useCallback(
     (typing: boolean) => {

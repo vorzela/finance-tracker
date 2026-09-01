@@ -5,6 +5,15 @@
 -- It is safe to re-run: every object is created with `if not exists`, and
 -- policies are dropped before being recreated.
 --
+-- This is the ONLY file a new project needs — it already includes everything
+-- from migrate-avatars.sql, migrate-chat.sql, migrate-opening-balance.sql and
+-- migrate-perf.sql. Those four files are kept only so an *existing* Duo
+-- Wallet database from before they were folded in can catch up without
+-- losing data; ignore them on a fresh Supabase project.
+--
+-- Want a truly clean re-run (e.g. to wipe test data)? Run supabase/reset.sql
+-- first, then this file.
+--
 -- Two scopes exist throughout, and the difference is always `group_id`:
 --   • personal  → group_id is null, readable only by the row's owner
 --   • shared    → group_id set,     readable by every member of that group
@@ -54,14 +63,21 @@ create table if not exists public.groups (
 );
 
 create table if not exists public.group_members (
-  group_id  uuid        not null references public.groups (id) on delete cascade,
-  user_id   uuid        not null references public.profiles (id) on delete cascade,
-  role      text        not null default 'member' check (role in ('owner', 'member')),
-  joined_at timestamptz not null default now(),
+  group_id      uuid        not null references public.groups (id) on delete cascade,
+  user_id       uuid        not null references public.profiles (id) on delete cascade,
+  role          text        not null default 'member' check (role in ('owner', 'member')),
+  joined_at     timestamptz not null default now(),
+  -- Read receipts: bumped to now() whenever this member has the group chat
+  -- open (see mark_chat_read below). Null means "never opened chat" — every
+  -- message is unread, not a bug.
+  last_read_at  timestamptz,
   primary key (group_id, user_id)
 );
 
 create index if not exists group_members_user_idx on public.group_members (user_id);
+
+-- Needed for anyone who ran schema.sql before read receipts existed.
+alter table public.group_members add column if not exists last_read_at timestamptz;
 
 -- ── Accounts ────────────────────────────────────────────────────────────────
 -- Where money sits. Balances are always derived from transactions, never stored.
@@ -441,6 +457,26 @@ begin
 end;
 $$;
 
+-- Read receipts. A dedicated RPC rather than a raw UPDATE grant on
+-- group_members: this only ever touches the caller's own row, and only
+-- last_read_at — no broader write access to that table is needed or given.
+create or replace function public.mark_chat_read(p_group_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_group_member(p_group_id) then
+    raise exception 'Not a member of this group';
+  end if;
+
+  update public.group_members
+  set last_read_at = now()
+  where group_id = p_group_id and user_id = (select auth.uid());
+end;
+$$;
+
 -- ============================================================================
 -- Derived balances
 --
@@ -486,23 +522,61 @@ as $$
   group by a.id, a.opening_balance;
 $$;
 
--- What each person in the ledger is holding. On a couple's shared ledger the
--- app sums these into one household figure, and shows the split underneath.
+-- What each person in the ledger has actually earned/spent, plus the seed
+-- money they put in when they added an account. On a couple's shared ledger
+-- the app sums these into one household figure, and shows the split
+-- underneath.
+--
+-- Deliberately attributed by *transaction.user_id* (who logged it), not by
+-- which account it happened to touch: a shared M-Pesa account is still one
+-- pot, but if your partner spends from it, that should show under their
+-- name, not whoever happened to set the account up. Only the one-time
+-- opening balance stays tied to account ownership — that really is a fixed
+-- contribution the account's creator made, not an ongoing "who did what".
+-- Transfers move money between accounts without anyone gaining or losing
+-- anything, so only their fee (a real cost) is attributed here, never the
+-- principal — which keeps every member's balance summing to exactly the
+-- same household total as account_balances gives per-account.
 create or replace function public.member_balances(p_group_id uuid default null)
 returns table (user_id uuid, opening_balance bigint, balance bigint)
 language sql
 stable
 set search_path = public
 as $$
+  with opening as (
+    select a.owner_id as member_id, coalesce(sum(a.opening_balance), 0)::bigint as amount
+    from public.accounts a
+    where a.group_id is not distinct from p_group_id
+      and not a.archived
+    group by a.owner_id
+  ),
+  activity as (
+    select
+      t.user_id as member_id,
+      sum(
+        case t.kind
+          when 'income'   then t.amount - t.fee_amount
+          when 'expense'  then -(t.amount + t.fee_amount)
+          when 'transfer' then -t.fee_amount
+          else 0
+        end
+      )::bigint as amount
+    from public.transactions t
+    where t.group_id is not distinct from p_group_id
+    group by t.user_id
+  ),
+  everyone as (
+    select member_id from opening
+    union
+    select member_id from activity
+  )
   select
-    a.owner_id,
-    coalesce(sum(a.opening_balance), 0)::bigint,
-    coalesce(sum(b.balance), 0)::bigint
-  from public.accounts a
-  join public.account_balances(p_group_id) b on b.account_id = a.id
-  where a.group_id is not distinct from p_group_id
-    and not a.archived
-  group by a.owner_id;
+    e.member_id,
+    coalesce(o.amount, 0)::bigint,
+    coalesce(o.amount, 0)::bigint + coalesce(act.amount, 0)::bigint
+  from everyone e
+  left join opening o on o.member_id = e.member_id
+  left join activity act on act.member_id = e.member_id;
 $$;
 
 -- How much of each debt is left. Payments are transactions tagged with the
@@ -1086,6 +1160,7 @@ grant select, insert, update, delete
 grant execute on function public.create_group(text, text)   to authenticated;
 grant execute on function public.join_group(text)           to authenticated;
 grant execute on function public.rotate_invite_code(uuid)   to authenticated;
+grant execute on function public.mark_chat_read(uuid)        to authenticated;
 grant execute on function public.account_balances(uuid)     to authenticated;
 grant execute on function public.member_balances(uuid)      to authenticated;
 grant execute on function public.debt_balances(uuid)        to authenticated;

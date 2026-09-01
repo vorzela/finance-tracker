@@ -21,7 +21,7 @@ import * as api from "@/lib/api";
 import { HISTORY_MONTHS, keys, type LedgerHome } from "@/lib/api";
 import {
   buildOverview,
-  coupleBalanceFromAccounts,
+  coupleBalance,
   fillMonthHistory,
   nextPostDate,
 } from "@/lib/analytics";
@@ -129,6 +129,7 @@ export function useMembers() {
             role: "owner" as const,
             isSelf: true,
             avatarUrl: profileQuery.data.avatar_url,
+            lastReadAt: null,
           },
         ]
       : undefined;
@@ -524,6 +525,17 @@ export function useDeleteBudget() {
 
 // ── Household balances ──────────────────────────────────────────────────────
 
+/** Raw per-member totals from the member_balances RPC — see its SQL comment
+ * for exactly what's attributed to whom and why. */
+function useMemberBalanceRows() {
+  const { scope } = useScope();
+  return useQuery({
+    queryKey: keys.memberBalances(scope),
+    queryFn: () => api.fetchMemberBalances(scope),
+    staleTime: 15_000,
+  });
+}
+
 /**
  * What the household is worth: one total, plus who is holding what. On a
  * personal ledger there is only ever one member, so this collapses to your own
@@ -534,19 +546,19 @@ export function useCoupleBalance(): {
   isLoading: boolean;
   refetch: () => void;
 } {
-  const { accounts, isLoading, refetch } = useAccounts();
+  const rows = useMemberBalanceRows();
   const members = useMembers();
 
   const data = useMemo(() => {
-    if (accounts.length === 0 && !members.data) return null;
-    return coupleBalanceFromAccounts(accounts, members.data ?? []);
-  }, [accounts, members.data]);
+    if (!rows.data && !members.data) return null;
+    return coupleBalance(rows.data ?? [], members.data ?? []);
+  }, [rows.data, members.data]);
 
   return {
     data,
-    isLoading: isLoading || members.isLoading,
+    isLoading: rows.isLoading || members.isLoading,
     refetch: () => {
-      void refetch();
+      void rows.refetch();
     },
   };
 }
@@ -910,6 +922,11 @@ export function useLedgerSnapshot(monthKey: string) {
 
 export function useMonthOverview(monthKey: string): OverviewResult {
   const snapshot = useLedgerSnapshot(monthKey);
+  // Member balances are all-time (seed money + everything ever logged), not
+  // scoped to this month, so they can't be derived from snapshot.data — that
+  // only carries this month's transactions. Fetched separately; React Query
+  // dedupes this against useCoupleBalance() when both are mounted at once.
+  const memberRows = useMemberBalanceRows();
 
   const overview = useMemo(() => {
     if (!snapshot.data) return null;
@@ -927,8 +944,8 @@ export function useMonthOverview(monthKey: string): OverviewResult {
 
   const couple = useMemo(() => {
     if (!snapshot.data) return null;
-    return coupleBalanceFromAccounts(snapshot.data.accounts, snapshot.data.members);
-  }, [snapshot.data]);
+    return coupleBalance(memberRows.data ?? [], snapshot.data.members);
+  }, [snapshot.data, memberRows.data]);
 
   return {
     overview,

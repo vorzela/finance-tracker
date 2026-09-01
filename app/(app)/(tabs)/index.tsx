@@ -256,6 +256,7 @@ export default function Home() {
                     <Avatar
                       name={entry.member.name}
                       color={entry.member.color}
+                      uri={entry.member.avatarUrl}
                       size="sm"
                     />
                     <View className="flex-1">
@@ -420,6 +421,7 @@ export default function Home() {
                     <Avatar
                       name={entry.member.name}
                       color={entry.member.color}
+                      uri={entry.member.avatarUrl}
                       size="sm"
                     />
                     <View className="flex-1">

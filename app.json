@@ -74,7 +74,8 @@
           "color": "#1e3a5f"
         }
       ],
-      "./plugins/with-sms-permissions.js"
+      "./plugins/with-sms-permissions.js",
+      "./plugins/with-release-signing.js"
     ],
     "experiments": {
       "typedRoutes": true,

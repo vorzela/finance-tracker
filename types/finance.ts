@@ -70,6 +70,9 @@ export interface Member {
   /** True for the signed-in user, used for "You" labels. */
   isSelf: boolean;
   avatarUrl: string | null;
+  /** Read receipts: when this member last had the group chat open. Null on
+   * a personal ledger (no chat) or if they've never opened it. */
+  lastReadAt: string | null;
 }
 
 export interface Account extends AccountRow {

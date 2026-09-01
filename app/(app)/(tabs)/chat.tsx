@@ -10,6 +10,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, Header, Screen } from "@/components/ui/screen";
+import { Sheet } from "@/components/ui/sheet";
 import { ActivitySkeleton } from "@/components/ui/shimmer";
 import { decorateMessages, useChat } from "@/lib/chat";
 import { timeLabel } from "@/lib/date";
@@ -22,6 +23,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import {
   ChatCircleIcon,
   PaperPlaneTiltIcon,
+  SmileyIcon,
   UsersIcon,
 } from "phosphor-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -35,6 +37,15 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import type { MessageView } from "@/types/finance";
 
+// Common ones for a household finance chat — reactions, money-related,
+// everyday feelings. Not exhaustive; a full picker isn't worth the extra
+// weight here.
+const EMOJI_OPTIONS = [
+  "😀", "😂", "🥲", "😍", "😅", "😢", "😡", "😮", "🤔", "🙏",
+  "👍", "👎", "👏", "🙌", "💪", "🤝", "✌️", "👀", "🔥", "💯",
+  "❤️", "🎉", "✅", "❌", "⚠️", "💰", "💸", "🧾", "🛒", "🏠",
+];
+
 export default function Chat() {
   const { scope, activeGroup } = useScope();
   const { data: members = [] } = useMembers();
@@ -47,6 +58,7 @@ export default function Chat() {
   const send = useSendMessage();
 
   const [draft, setDraft] = useState("");
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const others = members.filter((member) => !member.isSelf);
@@ -70,6 +82,23 @@ export default function Chat() {
   );
 
   const inverted = useMemo(() => [...views].reverse(), [views]);
+
+  // The most recent message *you* sent — the only one that needs a "Seen"
+  // label, same as most chat apps only mark the latest message rather than
+  // every one (it'd be redundant: reading message 5 means you read 1-4 too).
+  const lastMineId = useMemo(() => inverted.find((m) => m.isSelf)?.id ?? null, [inverted]);
+  const lastMineMessage = useMemo(
+    () => (lastMineId ? inverted.find((m) => m.id === lastMineId) : null),
+    [inverted, lastMineId],
+  );
+  const seenByNames = useMemo(() => {
+    if (!lastMineMessage) return [];
+    return others
+      .filter(
+        (member) => member.lastReadAt && member.lastReadAt >= lastMineMessage.created_at,
+      )
+      .map((member) => member.name.split(" ")[0]);
+  }, [others, lastMineMessage]);
 
   const onlineOthers = others.filter((member) => onlineIds.has(member.id));
   const typingNames = others
@@ -244,6 +273,7 @@ export default function Chat() {
                   inverted[index - 1]?.user_id !== item.user_id ||
                   minuteKey(inverted[index - 1]?.created_at) !== minuteKey(item.created_at)
                 }
+                seenByNames={item.id === lastMineId ? seenByNames : []}
               />
             )}
           />
@@ -259,6 +289,13 @@ export default function Chat() {
           className="flex-row items-end gap-2 px-4 pt-2"
           style={{ paddingBottom: 10 }}
         >
+          <Pressable
+            onPress={() => setEmojiOpen(true)}
+            className="h-11 w-11 items-center justify-center rounded-full active:opacity-80"
+            accessibilityLabel="Add emoji"
+          >
+            <SmileyIcon size={22} color={colors.muted} />
+          </Pressable>
           <View
             className="min-h-11 flex-1 justify-center rounded-[22px] px-4 py-2"
             style={{ backgroundColor: colors.subtle }}
@@ -298,6 +335,26 @@ export default function Chat() {
         </View>
       </KeyboardAvoidingView>
 
+      <Sheet
+        visible={emojiOpen}
+        onClose={() => setEmojiOpen(false)}
+        title="Add emoji"
+        maxHeightRatio={0.5}
+      >
+        <View className="flex-row flex-wrap gap-1 px-2 pb-2">
+          {EMOJI_OPTIONS.map((emoji) => (
+            <Pressable
+              key={emoji}
+              onPress={() => onChangeDraft(draft + emoji)}
+              className="h-12 w-12 items-center justify-center rounded-2xl active:opacity-60"
+              accessibilityLabel={`Insert ${emoji}`}
+            >
+              <AppText className="text-2xl">{emoji}</AppText>
+            </Pressable>
+          ))}
+        </View>
+      </Sheet>
+
       {send.error ? (
         <AppText className="px-5 pb-2 text-center text-[12px] text-negative">
           {getErrorMessage(send.error, "Couldn't send")}
@@ -322,10 +379,12 @@ function Bubble({
   message,
   showName,
   showTime,
+  seenByNames,
 }: {
   message: MessageView;
   showName: boolean;
   showTime: boolean;
+  seenByNames: string[];
 }) {
   const colors = useThemeColors();
   const mine = message.isSelf;
@@ -357,6 +416,11 @@ function Bubble({
           className={`mt-0.5 text-[10px] text-faint ${mine ? "text-right" : "text-left"}`}
         >
           {timeLabel(message.created_at)}
+        </AppText>
+      ) : null}
+      {seenByNames.length > 0 ? (
+        <AppText className="mt-0.5 text-right text-[10px] text-faint">
+          {seenByNames.length === 1 ? `Seen by ${seenByNames[0]}` : `Seen by ${seenByNames.join(", ")}`}
         </AppText>
       ) : null}
     </View>

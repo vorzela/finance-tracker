@@ -11,6 +11,7 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { File } from "expo-file-system";
 import { addMonths, currentMonthKey, monthKeyOf, monthRange } from "@/lib/date";
 import { fillMonthHistory } from "@/lib/analytics";
 import {
@@ -182,14 +183,26 @@ export async function updateProfile(
 
 /** Uploads a local image to the public `avatars` bucket and returns its URL. */
 export async function uploadAvatar(userId: string, localUri: string): Promise<string> {
-  const response = await fetch(localUri);
-  const blob = await response.blob();
+  // Deliberately NOT fetch(localUri).then(r => r.blob()): React Native's Blob
+  // polyfill is unreliable when a blob obtained from a local file fetch is
+  // re-uploaded as a request body — it frequently throws a bare "Network
+  // request failed" even on a perfectly good connection, which is what was
+  // showing up in the UI as a false "no connection" error. Reading the file
+  // as bytes via expo-file-system and uploading those directly avoids the
+  // Blob round-trip entirely.
   const ext = (localUri.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
   const path = `${userId}/${Date.now()}.${ext}`;
 
-  const { error } = await supabase().storage.from("avatars").upload(path, blob, {
+  let bytes: Uint8Array;
+  try {
+    bytes = await new File(localUri).bytes();
+  } catch (err) {
+    throw new Error("Couldn't read that photo. Try picking it again.");
+  }
+
+  const { error } = await supabase().storage.from("avatars").upload(path, bytes, {
     upsert: true,
-    contentType: blob.type || `image/${ext}`,
+    contentType: `image/${ext === "jpg" ? "jpeg" : ext}`,
   });
   if (error) fail(error, "upload your photo");
 
@@ -204,10 +217,17 @@ interface MembershipWithGroup {
   group: GroupRow | null;
 }
 
-export async function fetchGroups(): Promise<GroupSummary[]> {
+export async function fetchGroups(userId: string): Promise<GroupSummary[]> {
   const { data, error } = await supabase()
     .from("group_members")
     .select("role, group:groups(*)")
+    // group_members_select's RLS lets you see every member's row for any
+    // group you belong to (needed elsewhere, e.g. member lists) — not just
+    // your own row. Without this filter, a group with N members comes back
+    // as N duplicate rows here, one per member, all embedding the same
+    // group — which showed up as a household appearing twice (or however
+    // many members it has) in the ledger switcher.
+    .eq("user_id", userId)
     .order("joined_at", { ascending: true });
 
   if (error) fail(error, "load your groups");
@@ -292,6 +312,7 @@ export async function leaveGroup(groupId: string, userId: string): Promise<void>
 interface MemberWithProfile {
   role: MemberRole;
   user_id: string;
+  last_read_at: string | null;
   profile: Pick<ProfileRow, "id" | "display_name" | "color" | "avatar_url"> | null;
 }
 
@@ -307,13 +328,14 @@ export async function fetchMembers(scope: Scope, userId: string): Promise<Member
         role: "owner",
         isSelf: true,
         avatarUrl: profile.avatar_url,
+        lastReadAt: null,
       },
     ];
   }
 
   const { data, error } = await supabase()
     .from("group_members")
-    .select("role, user_id, profile:profiles(id, display_name, color, avatar_url)")
+    .select("role, user_id, last_read_at, profile:profiles(id, display_name, color, avatar_url)")
     .eq("group_id", scope.groupId)
     .order("joined_at", { ascending: true });
 
@@ -326,7 +348,14 @@ export async function fetchMembers(scope: Scope, userId: string): Promise<Member
     role: row.role,
     isSelf: row.user_id === userId,
     avatarUrl: row.profile?.avatar_url ?? null,
+    lastReadAt: row.last_read_at ?? null,
   }));
+}
+
+/** Bumps the caller's read receipt for a group's chat to now. */
+export async function markChatRead(groupId: string): Promise<void> {
+  const { error } = await supabase().rpc("mark_chat_read", { p_group_id: groupId });
+  if (error) fail(error, "mark chat as read");
 }
 
 // ── Accounts ────────────────────────────────────────────────────────────────
@@ -410,13 +439,17 @@ export async function updateAccount(
   id: string,
   draft: AccountDraft,
 ): Promise<void> {
-  const openingBalance = Math.max(0, Math.round(draft.openingBalance));
   const { error } = await supabase()
     .from("accounts")
+    // Deliberately no opening_balance here: it's the fixed starting point
+    // every later balance calculation is built on
+    // (account_balances/member_balances add transactions on top of it), so
+    // changing it after the fact would silently rewrite the account's whole
+    // history rather than just correct a mistake going forward. It's set
+    // once, at creation, in createAccount below.
     .update({
       name: draft.name.trim(),
       type: draft.type,
-      opening_balance: openingBalance,
       color: draft.color,
     })
     .eq("id", id);
@@ -607,6 +640,10 @@ function parseMember(raw: Record<string, unknown>): Member {
     role: asString(raw.role) === "owner" ? "owner" : "member",
     isSelf: Boolean(raw.is_self),
     avatarUrl: raw.avatar_url == null ? null : asString(raw.avatar_url),
+    // Not carried in ledger_home's snapshot — this path is used for the
+    // member picker/breakdowns, not the chat screen, which fetches live
+    // read state via fetchMembers() instead.
+    lastReadAt: null,
   };
 }
 

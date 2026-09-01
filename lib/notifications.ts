@@ -9,11 +9,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { savePushToken } from "@/lib/api";
+import { savePushToken, sendMessage } from "@/lib/api";
+import { initSupabase, supabase } from "@/lib/supabase";
 import type { BudgetStatus } from "@/types/finance";
 import { formatMoney } from "@/lib/currency";
 
 const SEEN_KEY = "duo-wallet.budget-alerts-seen";
+const CHAT_REPLY_CATEGORY = "chat-reply";
+const CHAT_REPLY_ACTION = "reply";
 
 /** Group whose chat screen is in the foreground — suppress banners for it. */
 let viewingChatGroupId: string | null = null;
@@ -133,6 +136,54 @@ async function ensureChatChannel(): Promise<void> {
   });
 }
 
+/** Registers the "Reply" quick-action so chat notifications can be answered
+ * without opening the app. Safe/cheap to call repeatedly — it just
+ * re-declares the same category. */
+async function ensureChatReplyCategory(): Promise<void> {
+  await Notifications.setNotificationCategoryAsync(CHAT_REPLY_CATEGORY, [
+    {
+      identifier: CHAT_REPLY_ACTION,
+      buttonTitle: "Reply",
+      textInput: { submitButtonTitle: "Send", placeholder: "Message" },
+      options: {
+        // Send from the notification tray itself — don't launch the app UI
+        // just to fire off a one-line reply.
+        opensAppToForeground: false,
+      },
+    },
+  ]);
+}
+
+/** Sends a reply typed directly into a chat notification. Runs outside any
+ * React tree — this can fire while the app is backgrounded or not yet
+ * mounted, so it goes straight through Supabase rather than via a query
+ * hook or mutation. */
+async function handleQuickReply(groupId: string, body: string): Promise<void> {
+  const trimmed = body.trim();
+  if (!trimmed) return;
+  try {
+    await initSupabase();
+    const client = supabase();
+    const { data } = await client.auth.getSession();
+    const userId = data.session?.user.id;
+    if (!userId) return;
+    await sendMessage(groupId, userId, trimmed);
+  } catch (err) {
+    console.warn("[notifications] quick reply failed:", err);
+  }
+}
+
+// Module-level, not inside a component: notification action responses need
+// to be caught even if the app was backgrounded or not yet mounted when the
+// person tapped Send on the reply keyboard.
+Notifications.addNotificationResponseReceivedListener((response) => {
+  if (response.actionIdentifier !== CHAT_REPLY_ACTION) return;
+  const userText = response.userText;
+  const groupId = response.notification.request.content.data?.groupId;
+  if (typeof userText !== "string" || typeof groupId !== "string") return;
+  void handleQuickReply(groupId, userText);
+});
+
 /** Banner when a household message arrives and you are not looking at that chat. */
 export async function notifyChatMessage(input: {
   groupId: string;
@@ -144,6 +195,7 @@ export async function notifyChatMessage(input: {
   const permitted = await ensureNotificationPermission();
   if (!permitted) return;
   await ensureChatChannel();
+  await ensureChatReplyCategory();
 
   await Notifications.scheduleNotificationAsync({
     content: {
@@ -151,6 +203,7 @@ export async function notifyChatMessage(input: {
       body: input.body,
       sound: true,
       data: { type: "chat", groupId: input.groupId },
+      categoryIdentifier: CHAT_REPLY_CATEGORY,
       ...(Platform.OS === "android" ? { channelId: "chat" } : {}),
     },
     trigger: null,

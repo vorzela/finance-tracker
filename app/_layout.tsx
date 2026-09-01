@@ -72,6 +72,8 @@ import {
   SourceSerif4_700Bold,
 } from "@expo-google-fonts/source-serif-4";
 import { AccentRoot } from "@/components/ui/accent-root";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { NetworkProvider } from "@/lib/network";
 import { ScopeProvider } from "@/lib/scope";
@@ -225,9 +227,13 @@ export default function RootLayout() {
                 <AuthProvider>
                   <ScopeProvider>
                     <KeyboardProvider>
-                      <SplashGate>
-                        <RootStack />
-                      </SplashGate>
+                      <BottomSheetModalProvider>
+                        <SplashGate>
+                          <ErrorBoundary>
+                            <RootStack />
+                          </ErrorBoundary>
+                        </SplashGate>
+                      </BottomSheetModalProvider>
                     </KeyboardProvider>
                   </ScopeProvider>
                 </AuthProvider>

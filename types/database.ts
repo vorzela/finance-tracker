@@ -235,6 +235,10 @@ export type Database = {
         Args: { p_group_id: string };
         Returns: string;
       };
+      mark_chat_read: {
+        Args: { p_group_id: string };
+        Returns: void;
+      };
       account_balances: {
         Args: { p_group_id?: string | null };
         Returns: { account_id: string; balance: number }[];
