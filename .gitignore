@@ -47,3 +47,5 @@ app-example
 .expo/
 *.log
 DuoWallet-release.apk
+
+duowallet-release.keystore
