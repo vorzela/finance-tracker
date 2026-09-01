@@ -35,7 +35,7 @@ import type { Account } from "@/types/finance";
 
 const TYPE_OPTIONS: { value: AccountType; label: string }[] = [
   { value: "cash", label: "Cash" },
-  { value: "mobile", label: "M-Pesa" },
+  { value: "mobile", label: "Mobile money" },
   { value: "bank", label: "Bank" },
   { value: "card", label: "Card" },
 ];
@@ -96,16 +96,16 @@ export default function Accounts() {
       return;
     }
 
-    const parsedOpening = openingText
-      ? parseAmount(openingText, currency)
-      : 0;
-    if (parsedOpening === null) {
-      setFormError("Opening balance must be a number.");
-      return;
-    }
-    if (parsedOpening < 0) {
-      setFormError("Opening balance must be 0 or more. Running balance can still go negative.");
-      return;
+    if (!editing) {
+      const parsedOpening = openingText ? parseAmount(openingText, currency) : 0;
+      if (parsedOpening === null) {
+        setFormError("Opening balance must be a number.");
+        return;
+      }
+      if (parsedOpening < 0) {
+        setFormError("Opening balance must be 0 or more. Running balance can still go negative.");
+        return;
+      }
     }
 
     try {
@@ -114,7 +114,9 @@ export default function Accounts() {
         draft: {
           name,
           type,
-          openingBalance: parsedOpening,
+          // Ignored by updateAccount once an account exists — see its
+          // comment — but createAccount still needs a real value.
+          openingBalance: editing ? editing.opening_balance : (parseAmount(openingText, currency) ?? 0),
           color,
         },
       });
@@ -265,7 +267,7 @@ export default function Accounts() {
         <View className="gap-4 px-2 pb-2">
           <Input
             label="Name"
-            placeholder="M-Pesa, Equity, Wallet…"
+            placeholder="M-Pesa, Ziidi, Equity, Wallet…"
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
@@ -276,6 +278,12 @@ export default function Accounts() {
               Type
             </AppText>
             <Segmented options={TYPE_OPTIONS} value={type} onChange={setType} size="sm" />
+            {type === "mobile" ? (
+              <AppText className="px-1 text-xs text-gray-400">
+                Covers any mobile wallet — M-Pesa, Ziidi, Airtel Money, Fuliza, whatever you use.
+                Put the specific one in the name above.
+              </AppText>
+            ) : null}
           </View>
 
           <Input
@@ -284,12 +292,18 @@ export default function Accounts() {
             value={openingText}
             onChangeText={setOpeningText}
             keyboardType="decimal-pad"
+            editable={!editing}
+            style={editing ? { opacity: 0.5 } : undefined}
             leadingNode={
               <AppText className="text-base font-bold text-gray-400">
                 {currencySymbol(currency)}
               </AppText>
             }
-            hint="Minimum 0. Live balance = opening + transactions (can go negative)."
+            hint={
+              editing
+                ? "Set once, when the account was added — can't be changed after. Add a transaction if the real balance needs correcting."
+                : "Minimum 0. Live balance = opening + transactions (can go negative)."
+            }
           />
 
           <View className="gap-2">
