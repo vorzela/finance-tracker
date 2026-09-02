@@ -69,8 +69,17 @@ export function Sheet({
   // BottomSheetModal's imperative present()/dismiss() API, so nothing
   // outside this file needs to change.
   useEffect(() => {
-    if (visible) ref.current?.present();
-    else ref.current?.dismiss();
+    if (visible) {
+      // Reanimated 4 + this library has an open upstream issue where a
+      // sheet presented in the same tick as the tap that triggered it can
+      // mount before its animated reactions are wired up, and never
+      // becomes visible even though it's technically mounted. Deferring
+      // present() by a frame — after the tap's own re-render has settled —
+      // is the workaround reported to fix it.
+      const raf = requestAnimationFrame(() => ref.current?.present());
+      return () => cancelAnimationFrame(raf);
+    }
+    ref.current?.dismiss();
   }, [visible]);
 
   const snapPoints = useMemo(() => [`${maxHeightRatio * 100}%`], [maxHeightRatio]);
@@ -92,6 +101,12 @@ export function Sheet({
     <BottomSheetModal
       ref={ref}
       snapPoints={snapPoints}
+      // v5 defaults this to true, which fights a fixed snapPoints array —
+      // documented as a common cause of a sheet mounting but never
+      // resolving a real height (renders invisible/collapsed instead of
+      // erroring). We want the fixed percentage from maxHeightRatio, so
+      // dynamic content-based sizing needs to be off.
+      enableDynamicSizing={false}
       onDismiss={onClose}
       backdropComponent={renderBackdrop}
       enablePanDownToClose
