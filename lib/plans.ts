@@ -25,6 +25,10 @@ export interface Plan {
   title: string;
   kind: PlanKind;
   note: string;
+  /** Minor units — the target/cap the person set for this whole plan.
+   * 0 means "not set", distinct from the sum of item estimates below,
+   * which is what it'll actually cost based on what's been itemized. */
+  budget: number;
   items: PlanItem[];
   createdAt: number;
   updatedAt: number;
@@ -41,7 +45,11 @@ export async function loadPlans(scope: Scope): Promise<Plan[]> {
     const raw = await AsyncStorage.getItem(storageKey(scope));
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Plan[];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // Plans saved before the budget field existed won't have it — default
+    // to 0 ("not set") rather than leaving it undefined, which would turn
+    // any arithmetic on it into NaN.
+    return parsed.map((plan) => ({ ...plan, budget: plan.budget || 0 }));
   } catch {
     return [];
   }
@@ -74,6 +82,7 @@ export function emptyPlan(kind: PlanKind = "project"): Plan {
     title: "",
     kind,
     note: "",
+    budget: 0,
     items: [],
     createdAt: now,
     updatedAt: now,

@@ -17,7 +17,7 @@ import {
   ScreenScroll,
 } from "@/components/ui/screen";
 import { Sheet, SheetOption } from "@/components/ui/sheet";
-import { formatMoney, parseAmount } from "@/lib/currency";
+import { currencySymbol, formatMoney, parseAmount, toAmountInput } from "@/lib/currency";
 import {
   PLAN_KIND_OPTIONS,
   deletePlan,
@@ -58,6 +58,7 @@ export default function Plans() {
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<PlanKind>("project");
   const [note, setNote] = useState("");
+  const [budgetText, setBudgetText] = useState("");
   const [items, setItems] = useState<PlanItem[]>([]);
   const [itemLabel, setItemLabel] = useState("");
   const [itemEstimate, setItemEstimate] = useState("");
@@ -82,6 +83,7 @@ export default function Plans() {
     setTitle("");
     setKind("project");
     setNote("");
+    setBudgetText("");
     setItems([]);
     setItemLabel("");
     setItemEstimate("");
@@ -94,6 +96,7 @@ export default function Plans() {
     setTitle(plan.title);
     setKind(plan.kind);
     setNote(plan.note);
+    setBudgetText(plan.budget > 0 ? toAmountInput(plan.budget, currency) : "");
     setItems(plan.items.map((item) => ({ ...item })));
     setItemLabel("");
     setItemEstimate("");
@@ -133,6 +136,7 @@ export default function Plans() {
       title: cleaned,
       kind,
       note: note.trim(),
+      budget: parseAmount(budgetText, currency) ?? 0,
       items,
       updatedAt: Date.now(),
     };
@@ -164,6 +168,14 @@ export default function Plans() {
 
   const estimateTotal = (plan: Plan) =>
     plan.items.reduce((sum, item) => sum + (item.estimate || 0), 0);
+
+  // Live, for the form currently open — not a saved plan yet.
+  const formEstimateTotal = useMemo(
+    () => items.reduce((sum, item) => sum + (item.estimate || 0), 0),
+    [items],
+  );
+  const formBudget = parseAmount(budgetText, currency) ?? 0;
+  const formBudgetDiff = formBudget - formEstimateTotal;
 
   return (
     <Screen>
@@ -213,6 +225,7 @@ export default function Plans() {
                 const done = plan.items.filter((item) => item.done).length;
                 const total = plan.items.length;
                 const estimate = estimateTotal(plan);
+                const overBudget = plan.budget > 0 && estimate > plan.budget;
                 return (
                   <Pressable key={plan.id} onPress={() => openEdit(plan)}>
                     <Card>
@@ -231,7 +244,18 @@ export default function Plans() {
                             {estimate > 0
                               ? ` · ~${formatMoney(estimate, currency)}`
                               : ""}
+                            {plan.budget > 0
+                              ? ` of ${formatMoney(plan.budget, currency)} budget`
+                              : ""}
                           </AppText>
+                          {overBudget ? (
+                            <AppText
+                              className="mt-0.5 text-[12px] font-semibold"
+                              style={{ color: colors.negative }}
+                            >
+                              {formatMoney(estimate - plan.budget, currency)} over budget
+                            </AppText>
+                          ) : null}
                         </View>
                       </View>
                       {plan.note ? (
@@ -309,6 +333,20 @@ export default function Plans() {
             onChangeText={setNote}
           />
 
+          <Input
+            label="Budget (optional)"
+            placeholder="Total you want to spend, all in"
+            value={budgetText}
+            onChangeText={setBudgetText}
+            keyboardType="decimal-pad"
+            leadingNode={
+              <AppText className="text-base font-bold text-gray-400">
+                {currencySymbol(currency)}
+              </AppText>
+            }
+            hint="A cap for the whole plan — separate from item estimates below, so you can see if they fit."
+          />
+
           <View className="gap-2">
             <AppText className="px-1 text-[13px] font-semibold text-muted">Items needed</AppText>
             {items.map((item) => (
@@ -369,6 +407,26 @@ export default function Plans() {
             >
               Add item
             </Button>
+
+            {formBudget > 0 && formEstimateTotal > 0 ? (
+              <View
+                className="mt-1 rounded-2xl px-3 py-2.5"
+                style={{ backgroundColor: colors.subtle }}
+              >
+                <AppText className="text-[13px] text-muted">
+                  Itemized {formatMoney(formEstimateTotal, currency)} of{" "}
+                  {formatMoney(formBudget, currency)} budget
+                </AppText>
+                <AppText
+                  className="mt-0.5 text-[13px] font-semibold"
+                  style={{ color: formBudgetDiff >= 0 ? colors.positive : colors.negative }}
+                >
+                  {formBudgetDiff >= 0
+                    ? `${formatMoney(formBudgetDiff, currency)} left`
+                    : `${formatMoney(-formBudgetDiff, currency)} over budget`}
+                </AppText>
+              </View>
+            ) : null}
           </View>
 
           {formError ? <ErrorNote message={formError} /> : null}
