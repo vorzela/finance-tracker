@@ -8,15 +8,13 @@ import { cn } from "@/lib/cn";
 import { activeFontFamily } from "@/lib/font-runtime";
 import { useThemeColors } from "@/lib/theme";
 import { AppText } from "@/components/ui/app-text";
-import { SheetInputContext } from "@/components/ui/sheet";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import {
     CheckCircleIcon,
     EyeIcon,
     EyeSlashIcon,
     WarningCircleIcon,
 } from "phosphor-react-native";
-import React, { forwardRef, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   TextInput,
@@ -99,12 +97,6 @@ export const Input = forwardRef<TextInput, InputProps>(
     const { className: safeClassName, textAlign } = splitTextAlignClass(className);
     const [internalValue, setInternalValue] = useState(defaultValue ?? "");
     const isActive = isFocused || !!(value ?? internalValue);
-    const insideSheet = useContext(SheetInputContext);
-    // See SheetInputContext's comment: a plain RN TextInput inside a bottom
-    // sheet doesn't integrate with the sheet's own keyboard/gesture
-    // handling. BottomSheetTextInput is @gorhom/bottom-sheet's drop-in
-    // replacement that does.
-    const Field = (insideSheet ? BottomSheetTextInput : TextInput) as typeof TextInput;
 
     const internalRef = useRef<TextInput>(null);
     const mergeRef = (node: TextInput | null) => {
@@ -173,7 +165,7 @@ export const Input = forwardRef<TextInput, InputProps>(
                 {required ? <AppText style={{ color: colors.negative }}> *</AppText> : null}
               </Animated.Text>
             ) : null}
-            <Field
+            <TextInput
               ref={mergeRef}
               className={cn("m-0 p-0 text-[17px] text-ink", label && "mt-0.5", safeClassName)}
               style={[

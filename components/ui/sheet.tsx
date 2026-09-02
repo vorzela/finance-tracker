@@ -3,35 +3,46 @@
  *
  * Bottom sheet — clean grabber, grouped options, soft dimmer.
  *
- * Built on @gorhom/bottom-sheet rather than React Native's own <Modal> +
- * KeyboardAvoidingView. That combination looks right on iOS but is
- * unreliable for keyboard avoidance on Android: Modal renders its content
- * in a separate native Dialog window, and KeyboardAvoidingView listens for
- * keyboard-height events reported against the *root* window — the two
- * don't talk to each other reliably, so inputs inside a Modal-based sheet
- * end up hidden behind the keyboard instead of the sheet shifting up.
- * @gorhom/bottom-sheet renders as an overlay within the same window as the
- * rest of the app (via a portal at the GestureHandlerRootView, see
- * BottomSheetModalProvider in app/_layout.tsx) and has first-class
- * keyboard handling built specifically for this problem — paired here with
- * react-native-keyboard-controller (already used app-wide via
- * KeyboardProvider in app/_layout.tsx), which is the setup gorhom's own
- * docs recommend for reliable Android behavior.
+ * Deliberately hand-rolled rather than built on a third-party bottom-sheet
+ * library. @gorhom/bottom-sheet was tried first and hit a string of
+ * currently-open upstream issues specific to Reanimated 4 + the New
+ * Architecture (a rendering regression in 5.2.14, a dynamic-sizing/
+ * snapPoints conflict, a mount-timing race) that couldn't be reliably
+ * fixed without a real device to verify against. react-native-actions-sheet
+ * was considered next, but its v10 rewrite also now depends on Reanimated,
+ * carrying the same risk class.
+ *
+ * This instead uses only primitives already proven working elsewhere in
+ * this exact app: Reanimated for the slide/gesture animation (already used
+ * throughout, e.g. Input's floating label), react-native-gesture-handler's
+ * modern Gesture API for drag-to-dismiss, and react-native-keyboard-
+ * controller's KeyboardAvoidingView for keyboard handling (already working
+ * in chat.tsx's composer and connect.tsx).
+ *
+ * Crucially, this is NOT built on React Native's own <Modal>: Modal opens a
+ * separate native Dialog window on Android, and keyboard-height events
+ * don't reliably cross that window boundary — that mismatch was the root
+ * cause of the very first version of this component's keyboard problems.
+ * Rendering as a plain absolutely-positioned overlay within the same
+ * screen's view tree (like every other sheet library actually does under
+ * the hood) avoids that class of bug entirely.
  */
 
 import { AppText } from "@/components/ui/app-text";
 import { cn } from "@/lib/cn";
 import { useThemeColors } from "@/lib/theme";
-import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetModal,
-  BottomSheetScrollView,
-  BottomSheetView,
-} from "@gorhom/bottom-sheet";
 import { CheckIcon } from "phosphor-react-native";
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { Pressable, View } from "react-native";
+import React, { useEffect } from "react";
+import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export interface SheetProps {
@@ -44,13 +55,10 @@ export interface SheetProps {
   footer?: React.ReactNode;
 }
 
-/** True for any component rendered inside a Sheet's content. Input reads
- * this to decide whether it needs BottomSheetTextInput instead of the
- * plain RN TextInput — per @gorhom/bottom-sheet's own troubleshooting
- * docs, a regular TextInput inside a bottom sheet doesn't integrate with
- * the sheet's keyboard/gesture handling properly and the keyboard ends up
- * fighting the sheet instead of the two working together. */
-export const SheetInputContext = React.createContext(false);
+const OPEN_EASING = Easing.out(Easing.cubic);
+const CLOSE_EASING = Easing.in(Easing.cubic);
+const DISMISS_THRESHOLD = 100;
+const DISMISS_VELOCITY = 800;
 
 export function Sheet({
   visible,
@@ -63,100 +71,136 @@ export function Sheet({
 }: SheetProps) {
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
-  const ref = useRef<BottomSheetModal>(null);
+  const { height: windowHeight } = useWindowDimensions();
 
-  // Bridge the visible-boolean API every call site already uses onto
-  // BottomSheetModal's imperative present()/dismiss() API, so nothing
-  // outside this file needs to change.
+  // Mounted for the fade/slide-out to finish playing before actually
+  // unmounting — closing is animated out, not instant.
+  const [mounted, setMounted] = React.useState(visible);
+  const translateY = useSharedValue(windowHeight);
+  const backdropOpacity = useSharedValue(0);
+
   useEffect(() => {
     if (visible) {
-      // Reanimated 4 + this library has an open upstream issue where a
-      // sheet presented in the same tick as the tap that triggered it can
-      // mount before its animated reactions are wired up, and never
-      // becomes visible even though it's technically mounted. Deferring
-      // present() by a frame — after the tap's own re-render has settled —
-      // is the workaround reported to fix it.
-      const raf = requestAnimationFrame(() => ref.current?.present());
-      return () => cancelAnimationFrame(raf);
+      setMounted(true);
+      translateY.value = withTiming(0, { duration: 280, easing: OPEN_EASING });
+      backdropOpacity.value = withTiming(1, { duration: 220, easing: OPEN_EASING });
+    } else if (mounted) {
+      translateY.value = withTiming(windowHeight, { duration: 220, easing: CLOSE_EASING });
+      backdropOpacity.value = withTiming(0, { duration: 180, easing: CLOSE_EASING }, (done) => {
+        if (done) runOnJS(setMounted)(false);
+      });
     }
-    ref.current?.dismiss();
-  }, [visible]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- translateY/backdropOpacity are stable shared values
+  }, [visible, windowHeight]);
 
-  const snapPoints = useMemo(() => [`${maxHeightRatio * 100}%`], [maxHeightRatio]);
+  const close = () => onClose();
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.28}
-        pressBehavior="close"
-      />
-    ),
-    [],
-  );
+  const pan = Gesture.Pan()
+    .onChange((event) => {
+      // Only drag downward — the sheet has nowhere to go past fully open.
+      translateY.value = Math.max(0, translateY.value + event.changeY);
+    })
+    .onEnd((event) => {
+      const shouldDismiss =
+        translateY.value > DISMISS_THRESHOLD || event.velocityY > DISMISS_VELOCITY;
+      if (shouldDismiss) {
+        translateY.value = withTiming(windowHeight, { duration: 200, easing: CLOSE_EASING });
+        backdropOpacity.value = withTiming(0, { duration: 180 }, (done) => {
+          if (done) {
+            runOnJS(setMounted)(false);
+            runOnJS(close)();
+          }
+        });
+      } else {
+        translateY.value = withTiming(0, { duration: 180, easing: OPEN_EASING });
+      }
+    });
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
+
+  if (!mounted) return null;
 
   return (
-    <BottomSheetModal
-      ref={ref}
-      snapPoints={snapPoints}
-      // v5 defaults this to true, which fights a fixed snapPoints array —
-      // documented as a common cause of a sheet mounting but never
-      // resolving a real height (renders invisible/collapsed instead of
-      // erroring). We want the fixed percentage from maxHeightRatio, so
-      // dynamic content-based sizing needs to be off.
-      enableDynamicSizing={false}
-      onDismiss={onClose}
-      backdropComponent={renderBackdrop}
-      enablePanDownToClose
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
-      handleIndicatorStyle={{ backgroundColor: colors.faint, width: 36, height: 4 }}
-      backgroundStyle={{
-        backgroundColor: colors.surface,
-        borderTopLeftRadius: 28,
-        borderTopRightRadius: 28,
-      }}
+    <View
+      pointerEvents="box-none"
       style={{
-        shadowColor: colors.chrome,
-        shadowOpacity: 0.18,
-        shadowRadius: 24,
-        shadowOffset: { width: 0, height: -4 },
-        elevation: 16,
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1000,
+        elevation: 1000,
       }}
     >
-      <BottomSheetView style={{ paddingHorizontal: 20, paddingBottom: 12, paddingTop: 4 }}>
-        <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
-        {subtitle ? (
-          <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
-        ) : null}
-      </BottomSheetView>
+      <Animated.View style={[{ flex: 1, backgroundColor: "#000" }, backdropStyle]}>
+        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Close" />
+      </Animated.View>
 
-      <BottomSheetScrollView
-        style={{ paddingHorizontal: 12, flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 8 }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <SheetInputContext.Provider value={true}>{children}</SheetInputContext.Provider>
-      </BottomSheetScrollView>
-
-      {footer ? (
-        <View
-          style={{
-            borderTopWidth: 1,
-            borderTopColor: colors.hairline,
-            paddingHorizontal: 20,
-            paddingTop: 16,
-            paddingBottom: insets.bottom + 10,
-          }}
+      <GestureDetector gesture={pan}>
+        <Animated.View
+          style={[
+            {
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              maxHeight: windowHeight * maxHeightRatio,
+              backgroundColor: colors.surface,
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              paddingBottom: insets.bottom + 10,
+              shadowColor: colors.chrome,
+              shadowOpacity: 0.18,
+              shadowRadius: 24,
+              shadowOffset: { width: 0, height: -4 },
+              elevation: 16,
+            },
+            sheetStyle,
+          ]}
         >
-          <SheetInputContext.Provider value={true}>{footer}</SheetInputContext.Provider>
-        </View>
-      ) : null}
-    </BottomSheetModal>
+          <KeyboardAvoidingView behavior="padding" style={{ flexShrink: 1 }}>
+            <View className="items-center pt-2.5">
+              <View className="h-1 w-9 rounded-full" style={{ backgroundColor: colors.faint }} />
+            </View>
+
+            <View className="px-5 pb-3 pt-4">
+              <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
+              {subtitle ? (
+                <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
+              ) : null}
+            </View>
+
+            <ScrollView
+              className="px-3"
+              contentContainerStyle={{ paddingBottom: 8 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {children}
+            </ScrollView>
+
+            {footer ? (
+              <View
+                style={{
+                  borderTopWidth: 1,
+                  borderTopColor: colors.hairline,
+                  paddingHorizontal: 20,
+                  paddingTop: 16,
+                }}
+              >
+                {footer}
+              </View>
+            ) : null}
+          </KeyboardAvoidingView>
+        </Animated.View>
+      </GestureDetector>
+    </View>
   );
 }
 
