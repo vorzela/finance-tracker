@@ -164,7 +164,7 @@ export function Sheet({
             sheetStyle,
           ]}
         >
-          <KeyboardAvoidingView behavior="padding" style={{ flexShrink: 1 }}>
+          <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }} keyboardVerticalOffset={0}>
             <View className="items-center pt-2.5">
               <View className="h-1 w-9 rounded-full" style={{ backgroundColor: colors.faint }} />
             </View>
@@ -178,6 +178,7 @@ export function Sheet({
 
             <ScrollView
               className="px-3"
+              style={{ flexShrink: 1 }}
               contentContainerStyle={{ paddingBottom: 8 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
