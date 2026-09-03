@@ -3,21 +3,27 @@
  *
  * Bottom sheet — clean grabber, grouped options, soft dimmer.
  *
- * Deliberately hand-rolled rather than built on a third-party bottom-sheet
- * library. @gorhom/bottom-sheet was tried first and hit a string of
- * currently-open upstream issues specific to Reanimated 4 + the New
- * Architecture (a rendering regression in 5.2.14, a dynamic-sizing/
- * snapPoints conflict, a mount-timing race) that couldn't be reliably
- * fixed without a real device to verify against. react-native-actions-sheet
- * was considered next, but its v10 rewrite also now depends on Reanimated,
- * carrying the same risk class.
+ * Hand-rolled rather than built on a third-party bottom-sheet library.
+ * @gorhom/bottom-sheet was tried first and hit a string of currently-open
+ * upstream issues specific to Reanimated 4 + the New Architecture (a
+ * rendering regression in 5.2.14, a dynamic-sizing/snapPoints conflict, a
+ * mount-timing race) that couldn't be reliably fixed without a real device
+ * to verify against. react-native-actions-sheet was considered next, but
+ * its v10 rewrite also now depends on Reanimated, carrying the same risk
+ * class. This instead uses Reanimated for the slide/gesture animation
+ * (already used throughout the app, e.g. Input's floating label) and
+ * react-native-gesture-handler's modern Gesture API for drag-to-dismiss —
+ * both already proven working here, just not previously combined this way.
  *
- * This instead uses only primitives already proven working elsewhere in
- * this exact app: Reanimated for the slide/gesture animation (already used
- * throughout, e.g. Input's floating label), react-native-gesture-handler's
- * modern Gesture API for drag-to-dismiss, and react-native-keyboard-
- * controller's KeyboardAvoidingView for keyboard handling (already working
- * in chat.tsx's composer and connect.tsx).
+ * Keyboard handling uses react-native-keyboard-controller's
+ * KeyboardAwareScrollView (not KeyboardAvoidingView): on modern Android,
+ * edge-to-edge is forced from Android 15 onward and the OS no longer
+ * resizes the window for the keyboard, which breaks simple "push up by
+ * keyboard height" approaches. KeyboardAwareScrollView instead tracks the
+ * actually-focused input directly (position, focus changes, caret) and
+ * scrolls it into view — the library's own recommended approach for
+ * scrollable form content specifically, and the same component already
+ * used successfully elsewhere in this app (ScreenScroll, connect.tsx).
  *
  * Crucially, this is NOT built on React Native's own <Modal>: Modal opens a
  * separate native Dialog window on Android, and keyboard-height events
@@ -33,9 +39,9 @@ import { cn } from "@/lib/cn";
 import { useThemeColors } from "@/lib/theme";
 import { CheckIcon } from "phosphor-react-native";
 import React, { useEffect } from "react";
-import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
+import { Pressable, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import Animated, {
   Easing,
   runOnJS,
@@ -164,29 +170,29 @@ export function Sheet({
             sheetStyle,
           ]}
         >
-          <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }} keyboardVerticalOffset={0}>
-            <View className="items-center pt-2.5">
-              <View className="h-1 w-9 rounded-full" style={{ backgroundColor: colors.faint }} />
-            </View>
+          <View className="items-center pt-2.5">
+            <View className="h-1 w-9 rounded-full" style={{ backgroundColor: colors.faint }} />
+          </View>
 
-            <View className="px-5 pb-3 pt-4">
-              <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
-              {subtitle ? (
-                <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
-              ) : null}
-            </View>
+          <View className="px-5 pb-3 pt-4">
+            <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
+            {subtitle ? (
+              <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
+            ) : null}
+          </View>
 
-            <ScrollView
-              className="px-3"
-              style={{ flexShrink: 1 }}
-              contentContainerStyle={{ paddingBottom: 8 }}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {children}
-            </ScrollView>
+          <KeyboardAwareScrollView
+            className="flex-1 px-3"
+            contentContainerStyle={{ paddingBottom: 8 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            bottomOffset={24}
+          >
+            {children}
+          </KeyboardAwareScrollView>
 
-            {footer ? (
+          {footer ? (
+            <KeyboardStickyView style={{ backgroundColor: colors.surface }}>
               <View
                 style={{
                   borderTopWidth: 1,
@@ -197,8 +203,8 @@ export function Sheet({
               >
                 {footer}
               </View>
-            ) : null}
-          </KeyboardAvoidingView>
+            </KeyboardStickyView>
+          ) : null}
         </Animated.View>
       </GestureDetector>
     </View>
