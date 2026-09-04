@@ -48,6 +48,22 @@ const REF_RE =
 const DATE_RE =
   /on\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+at\s+(\d{1,2}:\d{2}\s*(?:AM|PM))/i;
 
+// Safaricom appends a promo line to almost every confirmation SMS — "Invest
+// & earn daily interest with Ziidi", "Buy goods with M-PESA and get a
+// discount", etc. — and that ad text can itself name a product (typically
+// Ziidi lately) that has nothing to do with what the message is actually
+// confirming. The real transaction details always come before the balance
+// statement; the ad always comes after it. Cutting the body there before
+// scanning for product keywords stops an unrelated ad from being read as
+// the transaction's product.
+const BALANCE_STATEMENT_RE = /\bbalance\s+is\s+(?:Ksh|KES|KSH)\s*[\d,]+(?:\.\d{1,2})?\.?/i;
+
+function stripPromoFooter(body: string): string {
+  const match = BALANCE_STATEMENT_RE.exec(body);
+  if (!match) return body;
+  return body.slice(0, match.index + match[0].length);
+}
+
 function toMinor(value: string): number {
   const n = Number(value.replace(/,/g, ""));
   if (!Number.isFinite(n)) return 0;
@@ -97,7 +113,7 @@ export function productHint(product: MpesaProduct): string {
 }
 
 function detectProduct(body: string): MpesaProduct {
-  const lower = body.toLowerCase();
+  const lower = stripPromoFooter(body).toLowerCase();
   const isMoneyMove =
     lower.includes("sent to") ||
     lower.includes("paid to") ||
