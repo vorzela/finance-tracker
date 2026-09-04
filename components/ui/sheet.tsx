@@ -35,6 +35,7 @@
  */
 
 import { AppText } from "@/components/ui/app-text";
+import { Portal } from "@/components/ui/portal";
 import { cn } from "@/lib/cn";
 import { useThemeColors } from "@/lib/theme";
 import { CheckIcon } from "phosphor-react-native";
@@ -132,82 +133,84 @@ export function Sheet({
   if (!mounted) return null;
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 1000,
-        elevation: 1000,
-      }}
-    >
-      <Animated.View style={[{ flex: 1, backgroundColor: "#000" }, backdropStyle]}>
-        <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Close" />
-      </Animated.View>
-
-      <GestureDetector gesture={pan}>
-        <Animated.View
-          style={[
-            {
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              maxHeight: windowHeight * maxHeightRatio,
-              backgroundColor: colors.surface,
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              paddingBottom: insets.bottom + 10,
-              shadowColor: colors.chrome,
-              shadowOpacity: 0.18,
-              shadowRadius: 24,
-              shadowOffset: { width: 0, height: -4 },
-              elevation: 16,
-            },
-            sheetStyle,
-          ]}
-        >
-          <View className="items-center pt-2.5">
-            <View className="h-1 w-9 rounded-full" style={{ backgroundColor: colors.faint }} />
-          </View>
-
-          <View className="px-5 pb-3 pt-4">
-            <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
-            {subtitle ? (
-              <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
-            ) : null}
-          </View>
-
-          <KeyboardAwareScrollView
-            className="flex-1 px-3"
-            contentContainerStyle={{ paddingBottom: 8 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            bottomOffset={24}
-          >
-            {children}
-          </KeyboardAwareScrollView>
-
-          {footer ? (
-            <KeyboardStickyView style={{ backgroundColor: colors.surface }}>
-              <View
-                style={{
-                  borderTopWidth: 1,
-                  borderTopColor: colors.hairline,
-                  paddingHorizontal: 20,
-                  paddingTop: 16,
-                }}
-              >
-                {footer}
-              </View>
-            </KeyboardStickyView>
-          ) : null}
+    <Portal>
+      <View
+        pointerEvents="box-none"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1000,
+          elevation: 1000,
+        }}
+      >
+        <Animated.View style={[{ flex: 1, backgroundColor: "#000" }, backdropStyle]}>
+          <Pressable style={{ flex: 1 }} onPress={close} accessibilityLabel="Close" />
         </Animated.View>
-      </GestureDetector>
-    </View>
+
+        <GestureDetector gesture={pan}>
+          <Animated.View
+            style={[
+              {
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                maxHeight: windowHeight * maxHeightRatio,
+                backgroundColor: colors.surface,
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                paddingBottom: insets.bottom + 10,
+                shadowColor: colors.chrome,
+                shadowOpacity: 0.18,
+                shadowRadius: 24,
+                shadowOffset: { width: 0, height: -4 },
+                elevation: 16,
+              },
+              sheetStyle,
+            ]}
+          >
+            <View className="items-center pt-2.5">
+              <View className="h-1 w-9 rounded-full" style={{ backgroundColor: colors.faint }} />
+            </View>
+
+            <View className="px-5 pb-3 pt-4">
+              <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
+              {subtitle ? (
+                <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
+              ) : null}
+            </View>
+
+            <KeyboardAwareScrollView
+              className="flex-1 px-3"
+              contentContainerStyle={{ paddingBottom: 8 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
+            >
+              {children}
+            </KeyboardAwareScrollView>
+
+            {footer ? (
+              <KeyboardStickyView style={{ backgroundColor: colors.surface }}>
+                <View
+                  style={{
+                    borderTopWidth: 1,
+                    borderTopColor: colors.hairline,
+                    paddingHorizontal: 20,
+                    paddingTop: 16,
+                  }}
+                >
+                  {footer}
+                </View>
+              </KeyboardStickyView>
+            ) : null}
+          </Animated.View>
+        </GestureDetector>
+      </View>
+    </Portal>
   );
 }
 
