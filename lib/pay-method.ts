@@ -78,12 +78,26 @@ export function payMethodFromAccountType(type: AccountType | null | undefined): 
 }
 
 /** First active account for this pay method, if any. */
+/**
+ * The account to use for a payment method. On a shared household ledger,
+ * more than one account can share the same type (each member's own M-Pesa,
+ * say) — preferring the current user's own account here, rather than
+ * whichever happened to be created first, matters: it was previously
+ * always picking the earliest-created account of that type regardless of
+ * owner, which in practice meant every transaction defaulted to the
+ * household creator's account balance, no matter who was actually entering
+ * the transaction.
+ */
 export function accountForPayMethod(
   accounts: Account[],
   method: PayMethod,
+  userId?: string | null,
 ): Account | undefined {
   const type = getPayMethod(method).accountType;
-  return accounts.find((account) => account.type === type && !account.archived);
+  const candidates = accounts.filter((account) => account.type === type && !account.archived);
+  if (candidates.length === 0) return undefined;
+  const mine = userId ? candidates.find((account) => account.owner_id === userId) : undefined;
+  return mine ?? candidates[0];
 }
 
 /**

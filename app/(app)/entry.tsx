@@ -137,7 +137,7 @@ export default function Entry() {
   const pay = getPayMethod(payMethod);
   const showFee = kind !== "income" && pay.usesFee;
   const showSms = !isEditing && kind !== "transfer" && pay.usesSms;
-  const methodAccount = accountForPayMethod(accounts, payMethod);
+  const methodAccount = accountForPayMethod(accounts, payMethod, user?.id);
 
   useEffect(() => {
     if (!isEditing || hydrated || !existing.data) return;
@@ -219,7 +219,7 @@ export default function Entry() {
       setSmsHint(null);
     }
     setOpeningSetupText("");
-    const match = accountForPayMethod(accounts, next);
+    const match = accountForPayMethod(accounts, next, user?.id);
     setAccountId(match?.id ?? null);
   };
 
@@ -396,10 +396,22 @@ export default function Entry() {
       setCategoryId(defaultCategoryFor(nextKind));
     }
 
-    const named = (needle: string) =>
-      accounts.find((account) => account.name.toLowerCase().includes(needle));
+    // Prefer the current user's own account when more than one matches —
+    // same reasoning as accountForPayMethod: on a shared ledger, defaulting
+    // to whichever account happened to be created first (usually the
+    // household creator's) rather than the actual current user's own
+    // account is exactly the wrong default.
+    const named = (needle: string) => {
+      const matches = accounts.filter((account) =>
+        account.name.toLowerCase().includes(needle),
+      );
+      return matches.find((account) => account.owner_id === user?.id) ?? matches[0];
+    };
+    const mobileMatches = accounts.filter((account) => account.type === "mobile");
     const mobile =
-      accounts.find((account) => account.type === "mobile") ?? named("mpesa");
+      mobileMatches.find((account) => account.owner_id === user?.id) ??
+      mobileMatches[0] ??
+      named("mpesa");
     if (parsed.product === "mshwari") {
       setAccountId(named("shwari")?.id ?? mobile?.id ?? accountId);
     } else if (parsed.product === "ziidi") {
