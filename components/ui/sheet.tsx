@@ -159,6 +159,13 @@ export function Sheet({
                 right: 0,
                 bottom: 0,
                 maxHeight: windowHeight * maxHeightRatio,
+                // Without this, content taller than maxHeight can visually
+                // overflow the card's rounded corners instead of being
+                // clipped — which left the inner KeyboardAwareScrollView
+                // without a hard boundary to actually scroll within, so
+                // longer content (e.g. a full category list) just got cut
+                // off rather than becoming scrollable.
+                overflow: "hidden",
                 backgroundColor: colors.surface,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
