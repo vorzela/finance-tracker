@@ -11,6 +11,7 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { withTimeout } from "@/lib/timeout";
 import { File } from "expo-file-system";
 import { addMonths, currentMonthKey, monthKeyOf, monthRange } from "@/lib/date";
 import { fillMonthHistory } from "@/lib/analytics";
@@ -200,9 +201,23 @@ export async function uploadAvatar(userId: string, localUri: string): Promise<st
     throw new Error("Couldn't read that photo. Try picking it again.");
   }
 
-  const { error } = await supabase().storage.from("avatars").upload(path, bytes, {
-    upsert: true,
-    contentType: `image/${ext === "jpg" ? "jpeg" : ext}`,
+  const { error } = await withTimeout(
+    supabase()
+      .storage.from("avatars")
+      .upload(path, bytes, {
+        upsert: true,
+        contentType: `image/${ext === "jpg" ? "jpeg" : ext}`,
+      }),
+    20_000,
+    "Photo upload timed out",
+  ).catch((err: unknown) => {
+    // A hung upload (common while offline — a "connected but no internet"
+    // state can leave a request neither resolving nor rejecting for a long
+    // time) would otherwise leave this mutation — and the "Uploading…"
+    // button state — stuck indefinitely instead of failing cleanly.
+    throw err instanceof Error && err.message === "Photo upload timed out"
+      ? new Error("No connection. Your change wasn't saved.")
+      : err;
   });
   if (error) fail(error, "upload your photo");
 

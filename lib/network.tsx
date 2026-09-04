@@ -14,6 +14,7 @@ import {
   type OfflineOp,
 } from "@/lib/offline-queue";
 import { useThemeColors } from "@/lib/theme";
+import { withTimeout } from "@/lib/timeout";
 import NetInfo from "@react-native-community/netinfo";
 import { onlineManager, useQueryClient } from "@tanstack/react-query";
 import React, {
@@ -114,7 +115,16 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
           await removeOfflineOp(op.id);
         }
       }
-      await queryClient.invalidateQueries();
+      // A timeout here matters just as much as the per-op ones above: a
+      // single hung refetch right after reconnecting (network still
+      // settling) would otherwise leave `syncing` — and the "syncing"
+      // banner — stuck indefinitely, even though every queued op already
+      // finished applying successfully.
+      await withTimeout(
+        queryClient.invalidateQueries(),
+        20_000,
+        "invalidateQueries timed out",
+      ).catch((err: unknown) => console.warn("[offline] post-sync refresh didn't finish", err));
     } finally {
       flushing.current = false;
       setSyncing(false);

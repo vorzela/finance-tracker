@@ -11,6 +11,7 @@
 import { onlineManager, useQueryClient } from "@tanstack/react-query";
 import type { Session, User } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { withTimeout } from "@/lib/timeout";
 import React, {
   createContext,
   useCallback,
@@ -54,24 +55,6 @@ interface AuthValue {
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
-
-/** Rejects if `promise` doesn't settle within `ms`, so a stalled auth/network
- * call can never leave the caller waiting forever. */
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (err) => {
-        clearTimeout(timer);
-        reject(err);
-      },
-    );
-  });
-}
 
 // Supabase's own getSession() already reads purely from local storage when
 // the access token isn't near expiry — no network involved. The trouble is
