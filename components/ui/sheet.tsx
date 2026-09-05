@@ -66,6 +66,9 @@ const OPEN_EASING = Easing.out(Easing.cubic);
 const CLOSE_EASING = Easing.in(Easing.cubic);
 const DISMISS_THRESHOLD = 100;
 const DISMISS_VELOCITY = 800;
+// A dim, not a solid screen — the whole point of a bottom sheet is that the
+// person can still tell what screen they're on underneath it.
+const BACKDROP_MAX_OPACITY = 0.5;
 
 export function Sheet({
   visible,
@@ -90,7 +93,7 @@ export function Sheet({
     if (visible) {
       setMounted(true);
       translateY.value = withTiming(0, { duration: 280, easing: OPEN_EASING });
-      backdropOpacity.value = withTiming(1, { duration: 220, easing: OPEN_EASING });
+      backdropOpacity.value = withTiming(BACKDROP_MAX_OPACITY, { duration: 220, easing: OPEN_EASING });
     } else if (mounted) {
       translateY.value = withTiming(windowHeight, { duration: 220, easing: CLOSE_EASING });
       backdropOpacity.value = withTiming(0, { duration: 180, easing: CLOSE_EASING }, (done) => {
@@ -191,7 +194,15 @@ export function Sheet({
             </View>
 
             <KeyboardAwareScrollView
-              className="flex-1 px-3"
+              className="px-3"
+              // flex: 1 alone isn't enough here — a flex child's default
+              // minimum size is based on its *content*, which can stop it
+              // shrinking to fit an already content-capped parent (this
+              // sheet card only has maxHeight, not a fixed height). Without
+              // minHeight: 0 overriding that, long content (e.g. a full
+              // category list) rendered past the card's bounds instead of
+              // becoming scrollable.
+              style={{ flex: 1, minHeight: 0 }}
               contentContainerStyle={{ paddingBottom: 8 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
