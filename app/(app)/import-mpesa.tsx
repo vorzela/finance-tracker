@@ -25,7 +25,7 @@ import {
   composeCategoryNote,
   getCategory,
 } from "@/lib/categories";
-import { currentMonthKey, shortWhenLabel } from "@/lib/date";
+import { currentMonthKey, shortWhenLabel, whenLabel } from "@/lib/date";
 import { formatMoney } from "@/lib/currency";
 import { getErrorMessage } from "@/lib/error";
 import {
@@ -146,6 +146,7 @@ export default function ImportMpesa() {
 
   const [paste, setPaste] = useState("");
   const [pending, setPending] = useState<ParsedMpesa | null>(null);
+  const [pendingWhen, setPendingWhen] = useState<Date>(new Date());
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [otherDetail, setOtherDetail] = useState("");
   const [messages, setMessages] = useState<SmsMessage[]>([]);
@@ -242,6 +243,7 @@ export default function ImportMpesa() {
   const openCategorize = (item: ParsedMpesa) => {
     setError(null);
     setPending(item);
+    setPendingWhen(item.occurredAt ? new Date(item.occurredAt) : new Date());
     setCategoryId(item.suggestedCategoryId);
     setOtherDetail("");
   };
@@ -250,6 +252,24 @@ export default function ImportMpesa() {
     setPending(null);
     setCategoryId(null);
     setOtherDetail("");
+  };
+
+  // Same imperative date-then-time chaining used elsewhere in this app
+  // (entry.tsx, the read-from picker above) — the declarative
+  // <DateTimePicker> crashes on unmount on some Android versions.
+  const openWhenPicker = () => {
+    DateTimePickerAndroid.open({
+      value: pendingWhen,
+      mode: "date",
+      maximumDate: new Date(),
+      onValueChange: (_event, pickedDate) => {
+        DateTimePickerAndroid.open({
+          value: pickedDate,
+          mode: "time",
+          onValueChange: (_timeEvent, pickedTime) => setPendingWhen(pickedTime),
+        });
+      },
+    });
   };
 
   const askPermission = async () => {
@@ -331,7 +351,7 @@ export default function ImportMpesa() {
           toAccountId: resolved.toAccountId,
           debtId: null,
           note,
-          occurredAt: pending.occurredAt ?? new Date().toISOString(),
+          occurredAt: pendingWhen.toISOString(),
           userId: user.id,
         },
       });
@@ -532,6 +552,22 @@ export default function ImportMpesa() {
           <View className="gap-3 px-1 pb-2">
             <AppText className="text-sm text-muted">{productHint(pending.product)}</AppText>
             <AppText className="text-sm font-semibold text-ink">{pending.note}</AppText>
+
+            <Pressable
+              onPress={openWhenPicker}
+              className="flex-row items-center gap-2 rounded-2xl border border-hairline bg-subtle px-4 py-3 active:opacity-80"
+            >
+              <ClockCountdownIcon size={18} color="#9ca3af" />
+              <View className="flex-1">
+                <AppText className="text-[10px] font-bold uppercase tracking-wider text-faint">
+                  When
+                </AppText>
+                <AppText className="mt-0.5 text-sm font-semibold text-ink">
+                  {whenLabel(pendingWhen.toISOString())}
+                </AppText>
+              </View>
+              <AppText className="text-xs font-bold text-brand">Change</AppText>
+            </Pressable>
 
             {pending.suggestedCategoryId ? (
               <Pressable
