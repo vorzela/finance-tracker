@@ -58,18 +58,20 @@ import {
   CreditCardIcon,
   DeviceMobileIcon,
   MoneyIcon,
+  PlusIcon,
   ReceiptIcon,
   TagIcon,
   TrashIcon,
   UsersIcon,
   WalletIcon,
 } from "phosphor-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Platform,
   Pressable,
   ScrollView,
+  type TextInput,
   View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -127,6 +129,22 @@ export default function Entry() {
   const [occurredAt, setOccurredAt] = useState(nowDate);
   const [note, setNote] = useState("");
   const [otherDetail, setOtherDetail] = useState("");
+  const otherDetailRef = useRef<TextInput>(null);
+
+  // autoFocus alone isn't reliable here: this input mounts right as the
+  // category picker Sheet is still playing its ~200ms close animation, and
+  // Android's focus system can silently drop a focus request made while
+  // another overlay is still animating away. Waiting for that to finish
+  // before focusing — rather than at mount time — is what actually works.
+  // (Nothing to focus without a keyboard to avoid: this is also why the
+  // field looked like it wasn't keyboard-avoiding either — with focus
+  // never actually landing, KeyboardAwareScrollView had no focused input
+  // to scroll to in the first place.)
+  useEffect(() => {
+    if (!categoryNeedsDetail(categoryId)) return;
+    const timer = setTimeout(() => otherDetailRef.current?.focus(), 260);
+    return () => clearTimeout(timer);
+  }, [categoryId]);
   const [smsPaste, setSmsPaste] = useState("");
   const [smsHint, setSmsHint] = useState<string | null>(null);
   const [openingSetupText, setOpeningSetupText] = useState("");
@@ -810,13 +828,13 @@ export default function Entry() {
 
         {kind !== "transfer" && categoryNeedsDetail(categoryId) ? (
           <Input
+            ref={otherDetailRef}
             label={categoryDetailLabel(categoryId)}
             placeholder={categoryDetailPlaceholder(categoryId)}
             value={otherDetail}
             onChangeText={setOtherDetail}
             required
             maxLength={80}
-            autoFocus
           />
         ) : null}
 
@@ -880,7 +898,13 @@ export default function Entry() {
         visible={picker === "account" || picker === "toAccount"}
         onClose={() => setPicker("none")}
         title={picker === "toAccount" ? "Move money to" : "Account"}
-        subtitle={accounts.length === 0 ? "You haven't added any accounts yet." : undefined}
+        subtitle={
+          accounts.length === 0
+            ? "You haven't added any accounts yet."
+            : picker === "toAccount" && accounts.length < 2
+              ? "You need a second account to move money between."
+              : undefined
+        }
       >
         {accounts.map((account) => (
           <SheetOption
@@ -902,6 +926,21 @@ export default function Entry() {
             }}
           />
         ))}
+        {picker === "toAccount" && accounts.length < 2 ? (
+          <SheetOption
+            label="Add another account"
+            description="Set it up with its own opening balance, then come back to move money into it"
+            leading={
+              <IconTile color="#2a5298">
+                <PlusIcon size={20} color="#2a5298" weight="bold" />
+              </IconTile>
+            }
+            onPress={() => {
+              setPicker("none");
+              router.push("/accounts");
+            }}
+          />
+        ) : null}
         {kind !== "transfer" ? (
           <SheetOption
             label="No account"
