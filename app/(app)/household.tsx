@@ -364,6 +364,7 @@ export default function Household() {
 
       {/* ── Create ─────────────────────────────────────────────────────── */}
       <Sheet
+        keyboardAware
         visible={mode === "create"}
         onClose={() => setMode("none")}
         title="New household"
@@ -411,6 +412,7 @@ export default function Household() {
 
       {/* ── Join ───────────────────────────────────────────────────────── */}
       <Sheet
+        keyboardAware
         visible={mode === "join"}
         onClose={() => setMode("none")}
         title="Join a household"
@@ -439,6 +441,7 @@ export default function Household() {
 
       {/* ── Rename ─────────────────────────────────────────────────────── */}
       <Sheet
+        keyboardAware
         visible={mode === "rename"}
         onClose={() => setMode("none")}
         title="Rename household"

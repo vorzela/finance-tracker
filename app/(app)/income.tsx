@@ -319,6 +319,7 @@ export default function Income() {
       )}
 
       <Sheet
+        keyboardAware
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing ? "Edit monthly entry" : "New monthly entry"}

@@ -529,6 +529,7 @@ export default function ImportMpesa() {
       </ScreenScroll>
 
       <Sheet
+        keyboardAware
         visible={pending !== null}
         onClose={closeCategorize}
         title="What was this for?"

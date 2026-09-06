@@ -40,7 +40,7 @@ import { cn } from "@/lib/cn";
 import { useThemeColors } from "@/lib/theme";
 import { CheckIcon } from "phosphor-react-native";
 import React, { useEffect } from "react";
-import { Pressable, useWindowDimensions, View } from "react-native";
+import { Pressable, ScrollView, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import Animated, {
@@ -60,6 +60,18 @@ export interface SheetProps {
   children: React.ReactNode;
   maxHeightRatio?: number;
   footer?: React.ReactNode;
+  /** Set true only when this sheet's content includes a real text input
+   * (Input/TextArea). Pulls in KeyboardAwareScrollView + KeyboardStickyView
+   * so the keyboard doesn't cover the field being typed into.
+   *
+   * Defaults to false — a plain ScrollView — because that machinery is
+   * complex (it tracks focused-input position, keyboard height/animation,
+   * etc.) and sheets that never contain an input have nothing for it to
+   * usefully track. That complexity turned out to itself be a source of
+   * "content doesn't scroll" bugs even in sheets with no keyboard
+   * involvement at all (e.g. a plain category picker) — a plain
+   * ScrollView has none of those edge cases and just works. */
+  keyboardAware?: boolean;
 }
 
 const OPEN_EASING = Easing.out(Easing.cubic);
@@ -78,6 +90,7 @@ export function Sheet({
   children,
   maxHeightRatio = 0.78,
   footer,
+  keyboardAware = false,
 }: SheetProps) {
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
@@ -152,6 +165,9 @@ export function Sheet({
 
   if (!mounted) return null;
 
+  const ScrollComponent = keyboardAware ? KeyboardAwareScrollView : ScrollView;
+  const FooterWrapper = keyboardAware ? KeyboardStickyView : View;
+
   return (
     <Portal>
       <View
@@ -211,19 +227,19 @@ export function Sheet({
               </View>
             </View>
 
-            <KeyboardAwareScrollView
+            <ScrollComponent
               className="px-3"
               style={{ maxHeight: scrollMaxHeight }}
               contentContainerStyle={{ paddingBottom: 8 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
+              {...(keyboardAware ? { bottomOffset: 24 } : {})}
             >
               {children}
-            </KeyboardAwareScrollView>
+            </ScrollComponent>
 
             {footer ? (
-              <KeyboardStickyView
+              <FooterWrapper
                 style={{ backgroundColor: colors.surface }}
                 onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
               >
@@ -237,7 +253,7 @@ export function Sheet({
                 >
                   {footer}
                 </View>
-              </KeyboardStickyView>
+              </FooterWrapper>
             ) : null}
           </Animated.View>
         </GestureDetector>

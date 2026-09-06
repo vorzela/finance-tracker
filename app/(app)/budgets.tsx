@@ -272,6 +272,7 @@ export default function Budgets() {
       )}
 
       <Sheet
+        keyboardAware
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing ? "Edit budget" : "New budget"}

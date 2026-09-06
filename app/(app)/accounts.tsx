@@ -243,6 +243,7 @@ export default function Accounts() {
       )}
 
       <Sheet
+        keyboardAware
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing ? "Edit account" : "New account"}

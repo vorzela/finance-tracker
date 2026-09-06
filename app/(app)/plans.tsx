@@ -273,6 +273,7 @@ export default function Plans() {
       </ScreenScroll>
 
       <Sheet
+        keyboardAware
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing?.title ? "Edit plan" : "New plan"}

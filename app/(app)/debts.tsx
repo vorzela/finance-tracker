@@ -278,6 +278,7 @@ export default function Debts() {
       )}
 
       <Sheet
+        keyboardAware
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing ? "Edit debt" : "New debt"}
