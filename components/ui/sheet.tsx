@@ -82,6 +82,23 @@ export function Sheet({
   const insets = useSafeAreaInsets();
   const colors = useThemeColors();
   const { height: windowHeight } = useWindowDimensions();
+  const cardMaxHeight = windowHeight * maxHeightRatio;
+
+  // Explicit measured heights rather than flexbox auto-sizing: the card is
+  // position: absolute with only maxHeight (no definite height, since a
+  // fixed height would make every sheet the same size regardless of how
+  // little content it has). That makes Yoga's flex distribution for an
+  // "auto-height parent + flex:1 child" ambiguous — overflow:hidden and
+  // minHeight:0 clip the visual result, but the ScrollView itself never
+  // reliably learns it has less room than its content, so it doesn't
+  // scroll. Measuring the header/footer and doing the arithmetic ourselves
+  // removes that ambiguity entirely.
+  const [headerHeight, setHeaderHeight] = React.useState(0);
+  const [footerHeight, setFooterHeight] = React.useState(0);
+  const scrollMaxHeight = Math.max(
+    120,
+    cardMaxHeight - headerHeight - footerHeight - insets.bottom - 10,
+  );
 
   // Mounted for the fade/slide-out to finish playing before actually
   // unmounting — closing is animated out, not instant.
@@ -161,13 +178,12 @@ export function Sheet({
                 left: 0,
                 right: 0,
                 bottom: 0,
-                maxHeight: windowHeight * maxHeightRatio,
-                // Without this, content taller than maxHeight can visually
-                // overflow the card's rounded corners instead of being
-                // clipped — which left the inner KeyboardAwareScrollView
-                // without a hard boundary to actually scroll within, so
-                // longer content (e.g. a full category list) just got cut
-                // off rather than becoming scrollable.
+                maxHeight: cardMaxHeight,
+                // Belt-and-suspenders alongside the explicit scrollMaxHeight
+                // above: clips anything that still overflows visually
+                // (rounded corners) even though the real fix for scrolling
+                // is giving KeyboardAwareScrollView a measured, explicit
+                // maxHeight rather than relying on flexbox auto-sizing.
                 overflow: "hidden",
                 backgroundColor: colors.surface,
                 borderTopLeftRadius: 28,
@@ -182,27 +198,22 @@ export function Sheet({
               sheetStyle,
             ]}
           >
-            <View className="items-center pt-2.5">
-              <View className="h-1 w-9 rounded-full" style={{ backgroundColor: colors.faint }} />
-            </View>
+            <View onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
+              <View className="items-center pt-2.5">
+                <View className="h-1 w-9 rounded-full" style={{ backgroundColor: colors.faint }} />
+              </View>
 
-            <View className="px-5 pb-3 pt-4">
-              <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
-              {subtitle ? (
-                <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
-              ) : null}
+              <View className="px-5 pb-3 pt-4">
+                <AppText className="text-[22px] font-bold tracking-tight text-ink">{title}</AppText>
+                {subtitle ? (
+                  <AppText className="mt-1 text-[14px] leading-5 text-muted">{subtitle}</AppText>
+                ) : null}
+              </View>
             </View>
 
             <KeyboardAwareScrollView
               className="px-3"
-              // flex: 1 alone isn't enough here — a flex child's default
-              // minimum size is based on its *content*, which can stop it
-              // shrinking to fit an already content-capped parent (this
-              // sheet card only has maxHeight, not a fixed height). Without
-              // minHeight: 0 overriding that, long content (e.g. a full
-              // category list) rendered past the card's bounds instead of
-              // becoming scrollable.
-              style={{ flex: 1, minHeight: 0 }}
+              style={{ maxHeight: scrollMaxHeight }}
               contentContainerStyle={{ paddingBottom: 8 }}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
@@ -212,7 +223,10 @@ export function Sheet({
             </KeyboardAwareScrollView>
 
             {footer ? (
-              <KeyboardStickyView style={{ backgroundColor: colors.surface }}>
+              <KeyboardStickyView
+                style={{ backgroundColor: colors.surface }}
+                onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
+              >
                 <View
                   style={{
                     borderTopWidth: 1,
