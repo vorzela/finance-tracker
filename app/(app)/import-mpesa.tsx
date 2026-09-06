@@ -17,7 +17,8 @@ import {
   Screen,
   ScreenScroll,
 } from "@/components/ui/screen";
-import { Sheet, SheetOption } from "@/components/ui/sheet";
+import { SheetOption } from "@/components/ui/sheet";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { useAuth } from "@/lib/auth";
 import {
   categoriesFor,
@@ -528,8 +529,7 @@ export default function ImportMpesa() {
         </Section>
       </ScreenScroll>
 
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={pending !== null}
         onClose={closeCategorize}
         title="What was this for?"
@@ -611,7 +611,7 @@ export default function ImportMpesa() {
             ) : null}
           </View>
         ) : null}
-      </Sheet>
+      </FormSheet>
     </Screen>
   );
 }

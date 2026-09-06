@@ -19,7 +19,7 @@ import {
   ScreenScroll,
 } from "@/components/ui/screen";
 import { Segmented } from "@/components/ui/segmented";
-import { Sheet } from "@/components/ui/sheet";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { ACCOUNT_GLYPHS } from "@/components/finance/category-icon";
 import { cn } from "@/lib/cn";
 import { currencySymbol, formatMoney, parseAmount, toAmountInput } from "@/lib/currency";
@@ -242,8 +242,7 @@ export default function Accounts() {
         </ScreenScroll>
       )}
 
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing ? "Edit account" : "New account"}
@@ -328,7 +327,7 @@ export default function Accounts() {
 
           {formError ? <ErrorNote message={formError} /> : null}
         </View>
-      </Sheet>
+      </FormSheet>
     </Screen>
   );
 }

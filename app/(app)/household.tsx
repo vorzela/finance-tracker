@@ -12,6 +12,7 @@ import { Card, IconTile, Row, Section } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ErrorNote, Header, Screen, ScreenScroll } from "@/components/ui/screen";
 import { Sheet, SheetOption } from "@/components/ui/sheet";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { CURRENCY_OPTIONS, currencySymbol } from "@/lib/currency";
 import { getErrorMessage } from "@/lib/error";
 import {
@@ -363,8 +364,7 @@ export default function Household() {
       </ScreenScroll>
 
       {/* ── Create ─────────────────────────────────────────────────────── */}
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={mode === "create"}
         onClose={() => setMode("none")}
         title="New household"
@@ -408,11 +408,10 @@ export default function Household() {
 
           {formError ? <ErrorNote message={formError} /> : null}
         </View>
-      </Sheet>
+      </FormSheet>
 
       {/* ── Join ───────────────────────────────────────────────────────── */}
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={mode === "join"}
         onClose={() => setMode("none")}
         title="Join a household"
@@ -437,11 +436,10 @@ export default function Household() {
           />
           {formError ? <ErrorNote message={formError} /> : null}
         </View>
-      </Sheet>
+      </FormSheet>
 
       {/* ── Rename ─────────────────────────────────────────────────────── */}
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={mode === "rename"}
         onClose={() => setMode("none")}
         title="Rename household"
@@ -461,7 +459,7 @@ export default function Household() {
           />
           {formError ? <ErrorNote message={formError} /> : null}
         </View>
-      </Sheet>
+      </FormSheet>
 
       <Sheet
         visible={currencyOpen}

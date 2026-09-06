@@ -17,6 +17,7 @@ import {
   ScreenScroll,
 } from "@/components/ui/screen";
 import { Sheet, SheetOption } from "@/components/ui/sheet";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { currencySymbol, formatMoney, parseAmount, toAmountInput } from "@/lib/currency";
 import {
   PLAN_KIND_OPTIONS,
@@ -272,8 +273,7 @@ export default function Plans() {
         )}
       </ScreenScroll>
 
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing?.title ? "Edit plan" : "New plan"}
@@ -432,7 +432,7 @@ export default function Plans() {
 
           {formError ? <ErrorNote message={formError} /> : null}
         </View>
-      </Sheet>
+      </FormSheet>
 
       <Sheet visible={kindOpen} onClose={() => setKindOpen(false)} title="Plan type">
         {PLAN_KIND_OPTIONS.map((option) => (

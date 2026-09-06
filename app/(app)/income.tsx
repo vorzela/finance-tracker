@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/screen";
 import { Segmented } from "@/components/ui/segmented";
 import { Sheet, SheetOption } from "@/components/ui/sheet";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { categoriesFor, defaultCategoryFor, getCategory } from "@/lib/categories";
 import { currencySymbol, formatMoney, parseAmount, toAmountInput } from "@/lib/currency";
 import { shortDayLabel } from "@/lib/date";
@@ -318,8 +319,7 @@ export default function Income() {
         </ScreenScroll>
       )}
 
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing ? "Edit monthly entry" : "New monthly entry"}
@@ -383,7 +383,7 @@ export default function Income() {
           </Pressable>
           {formError ? <ErrorNote message={formError} /> : null}
         </View>
-      </Sheet>
+      </FormSheet>
 
       <Sheet
         visible={picker === "category"}

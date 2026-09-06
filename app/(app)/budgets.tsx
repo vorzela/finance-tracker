@@ -20,6 +20,7 @@ import {
   ScreenScroll,
 } from "@/components/ui/screen";
 import { Sheet, SheetOption } from "@/components/ui/sheet";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { budgetStatuses } from "@/lib/analytics";
 import { BUDGETABLE_CATEGORIES } from "@/lib/categories";
 import { cn } from "@/lib/cn";
@@ -271,8 +272,7 @@ export default function Budgets() {
         </ScreenScroll>
       )}
 
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing ? "Edit budget" : "New budget"}
@@ -341,7 +341,7 @@ export default function Budgets() {
 
           {formError ? <ErrorNote message={formError} /> : null}
         </View>
-      </Sheet>
+      </FormSheet>
 
       <Sheet
         visible={categoryOpen}

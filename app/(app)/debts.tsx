@@ -20,7 +20,7 @@ import {
   ScreenScroll,
 } from "@/components/ui/screen";
 import { Segmented } from "@/components/ui/segmented";
-import { Sheet } from "@/components/ui/sheet";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { currencySymbol, formatMoney, parseAmount, toAmountInput } from "@/lib/currency";
 import { shortDayLabel } from "@/lib/date";
 import { getErrorMessage } from "@/lib/error";
@@ -277,8 +277,7 @@ export default function Debts() {
         </ScreenScroll>
       )}
 
-      <Sheet
-        keyboardAware
+      <FormSheet
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={editing ? "Edit debt" : "New debt"}
@@ -321,7 +320,7 @@ export default function Debts() {
           />
           {formError ? <ErrorNote message={formError} /> : null}
         </View>
-      </Sheet>
+      </FormSheet>
     </Screen>
   );
 }
