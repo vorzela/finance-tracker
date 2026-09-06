@@ -607,6 +607,7 @@ export default function ImportMpesa() {
                 value={otherDetail}
                 onChangeText={setOtherDetail}
                 required
+                autoFocus
               />
             ) : null}
           </View>

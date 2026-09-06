@@ -213,7 +213,11 @@ export function FormSheet({
             contentContainerStyle={{ paddingBottom: 8 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            bottomOffset={24}
+            // Leave enough room for the sticky footer button sitting on top
+            // of the keyboard, not just the keyboard itself — otherwise a
+            // focused input near the bottom could end up scrolled to just
+            // behind the Save/submit button instead of clear of it.
+            bottomOffset={footerHeight + 24}
           >
             {children}
           </KeyboardAwareScrollView>

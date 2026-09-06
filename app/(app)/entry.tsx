@@ -816,6 +816,7 @@ export default function Entry() {
             onChangeText={setOtherDetail}
             required
             maxLength={80}
+            autoFocus
           />
         ) : null}
 
